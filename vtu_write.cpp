@@ -40,10 +40,11 @@ void write_vtu(char* filename, vec& points, std::vector<size_t>& triangles, std:
     fprintf(f, "      <CellData>\n");
     fprintf(f, "      </CellData>\n");
     fprintf(f, "      <Points>\n");
-    fprintf(f, "        <DataArray type=\"Float64\" Name=\"Points\" NumberOfComponents=\"2\" format=\"ascii\">\n");
+    fprintf(f, "        <DataArray type=\"Float64\" Name=\"Points\" NumberOfComponents=\"3\" format=\"ascii\">");
     for (size_t i=0; i<points.size(); i++) {
-        fprintf(f, " %.15lg", points[i]);
         if (i % 6 == 0) fprintf(f, "\n");
+        fprintf(f, " %.15lg", points[i]);
+        if (i % 2 == 1) fprintf(f, " 0");
     }
     fprintf(f, "\n");
     fprintf(f, "        </DataArray>\n");
@@ -56,17 +57,17 @@ void write_vtu(char* filename, vec& points, std::vector<size_t>& triangles, std:
     }
     fprintf(f, "\n");
     fprintf(f, "        </DataArray>\n");
-    fprintf(f, "        <DataArray type=\"Int64\" Name=\"offsets\" format=\"ascii\">\n");
+    fprintf(f, "        <DataArray type=\"Int64\" Name=\"offsets\" format=\"ascii\">");
     for (size_t i=0; i<triangles.size(); i++) {
-        fprintf(f, " %ld", (i+1)*3);
         if (i % 6 == 0) fprintf(f, "\n");
+        fprintf(f, " %ld", (i+1)*3);
     }
     fprintf(f, "\n");
     fprintf(f, "        </DataArray>\n");
-    fprintf(f, "        <DataArray type=\"UInt8\" Name=\"types\" format=\"ascii\">\n");
+    fprintf(f, "        <DataArray type=\"UInt8\" Name=\"types\" format=\"ascii\">");
     for (size_t i=0; i<triangles.size(); i++) {
-        fprintf(f, " %d", 5);
         if (i % 6 == 0) fprintf(f, "\n");
+        fprintf(f, " %d", 5);
     }
     fprintf(f, "\n");
     fprintf(f, "        </DataArray>\n");
