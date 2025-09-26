@@ -8,14 +8,17 @@ std::vector<double> P;
 size_t nP;
 std::vector<size_t> T;
 size_t nT;
-std::vector<size_t> B1;
-std::vector<size_t> B2;
-size_t nB1,nB2;
+std::vector<size_t> B;
+std::vector<int> B_flag;
+size_t nB;
+
+double k = 1;
 
 void MMult(const double* x, double* Mx) {
     double M00,M01,M02,M11,M12,M22;
     M00=M11=M22=1.0/6.0;
     M01=M02=M12=1.0/12.0;
+    
     for (size_t i=0;i<2*nP;i++) Mx[i] = 0;
     for (size_t i=0;i<nT;i++) {
         size_t i0 = T[i*3+0];
@@ -53,8 +56,7 @@ void MMult(const double* x, double* Mx) {
         double K11 = gx1*gx1 + gy1*gy1;
         double K12 = gx1*gx2 + gy1*gy2;
         double K22 = gx2*gx2 + gy2*gy2;
-        double a = area;
-        double k = 1;
+        double a = -area*k*k;
         double b = area;
         Mx[i0*2+0] += a*(M00*x[i0*2+0] + M01*x[i1*2+0] + M02*x[i2*2+0]);
         Mx[i1*2+0] += a*(M01*x[i0*2+0] + M11*x[i1*2+0] + M12*x[i2*2+0]);
@@ -69,15 +71,32 @@ void MMult(const double* x, double* Mx) {
         Mx[i1*2+1] += b*(K01*x[i0*2+1] + K11*x[i1*2+1] + K12*x[i2*2+1]);
         Mx[i2*2+1] += b*(K02*x[i0*2+1] + K12*x[i1*2+1] + K22*x[i2*2+1]);
     }
-    for (size_t i=0;i<nB1;i++) {
-        size_t idx = B1[i];
-        Mx[idx*2+0] = x[idx*2+0];
-        Mx[idx*2+1] = x[idx*2+1];
-    }
-    for (size_t i=0;i<nB2;i++) {
-        size_t idx = B2[i];
-        Mx[idx*2+0] = x[idx*2+0];
-        Mx[idx*2+1] = x[idx*2+1];
+    for (size_t i=0;i<nB;i++) {
+        size_t i0 = B[i*2+0];
+        size_t i1 = B[i*2+1];
+        double x0 = P[i0*2+0];
+        double y0 = P[i0*2+1];
+        double x1 = P[i1*2+0];
+        double y1 = P[i1*2+1];
+        double vx = x1-x0;
+        double vy = y1-y0;
+        double len = sqrt(vx*vx+vy*vy);
+        double b = len;
+        double robin = k;
+        double EM00, EM01, EM11;
+        EM00 = EM11 = 1.0/3.0;
+        EM01 = 1.0/6.0;
+        if (B_flag[i] == 1) {
+            Mx[i0*2+0] =  x[i0*2+0];
+            Mx[i0*2+1] =  x[i0*2+1];
+            Mx[i1*2+0] =  x[i1*2+0];
+            Mx[i1*2+1] =  x[i1*2+1];
+        } else if (B_flag[i] == 2) {
+            Mx[i0*2+0] +=  b*robin*(EM00 * x[i0*2+1] + EM01 * x[i1*2+1]);
+            Mx[i1*2+0] +=  b*robin*(EM01 * x[i0*2+1] + EM11 * x[i1*2+1]);
+            Mx[i0*2+1] += -b*robin*(EM00 * x[i0*2+0] + EM01 * x[i1*2+0]);
+            Mx[i1*2+1] += -b*robin*(EM01 * x[i0*2+0] + EM11 * x[i1*2+0]);
+        }
     }
 }
 
@@ -85,7 +104,7 @@ void MMult(const double* x, double* Mx) {
 
 int main() {
     {
-        FILE* f = fopen("mesh/mesh2_points.txt","rb");
+        FILE* f = fopen("mesh/empty2_points.txt","rb");
         nP = 0;
         while (! feof(f)) {
             double x,y;
@@ -96,24 +115,9 @@ int main() {
         }
         fclose(f);
     }
-    printf("Points %ld\n", P.size());
+    printf("Points %ld\n", nP);
     {
-        double maxx=P[0], minx=P[0];
-        for (size_t i=0;i<nP;i++) {
-            if (P[i*2+0] > maxx) maxx = P[i*2+0];
-            if (P[i*2+0] < minx) minx = P[i*2+0];
-        }
-        printf("X: [%lg, %lg]\n", minx, maxx);
-        for (size_t i=0;i<nP;i++) {
-            if (fabs(P[i*2+0] - minx) < 1e-6) B1.push_back(i);
-            if (fabs(P[i*2+0] - maxx) < 1e-6) B2.push_back(i);
-        }
-    }
-    nB1 = B1.size();
-    nB2 = B2.size();
-    printf("Borders: %ld, %ld\n", B1.size(), B2.size());
-    {
-        FILE* f = fopen("mesh/mesh2_triangles.txt","rb");
+        FILE* f = fopen("mesh/empty2_triangles.txt","rb");
         nT = 0;
         while (! feof(f)) {
             size_t i1,i2,i3;
@@ -125,19 +129,68 @@ int main() {
         }
         fclose(f);
     }
-    printf("Triangles: %ld\n", T.size());
+    printf("Triangles: %ld\n", nT);
+
+    {
+        double maxx=P[0], minx=P[0];
+        for (size_t i=0;i<nP;i++) {
+            if (P[i*2+0] > maxx) maxx = P[i*2+0];
+            if (P[i*2+0] < minx) minx = P[i*2+0];
+        }
+        printf("X: [%lg, %lg]\n", minx, maxx);
+        auto fun = [](double val, std::vector<size_t>& B, int flag){
+            for (size_t i=0;i<nT;i++) {
+                int count=0;
+                for (int j=0; j<3; j++) {
+                    size_t idx = T[i*3+j];
+                    if (fabs(P[idx*2+0] - val) < 1e-6) {
+                        printf("Added: %ld %ld\n",i, idx);
+                        B.push_back(idx);
+                        count++;
+                    }
+                }
+                if (count == 1) {
+                    B.pop_back();
+                } else if (count == 2) {
+                    B_flag.push_back(flag);
+                } else if (count > 2) {
+                    fprintf(stderr, "Whole triangle on edge\n");
+                    exit(2);
+                }
+            }
+            if (B.size() % 2 != 0) {
+                fprintf(stderr, "border edges wrong\n");
+                exit(2);
+            }
+        };
+        fun(minx, B, 1);
+        fun(maxx, B, 2);
+    }
+    nB = B.size()/2;
+    printf("Borders: %ld\n", nB);
 
 
     vec x;
     vec rhs;
     rhs.resize(2*nP);
     x.resize(2*nP);
-    for (const size_t i : B1) rhs[i*2+0] = 1;
-    for (const size_t i : B2) rhs[i*2+1] = 1;
+    for (size_t i=0; i<nB; i++) {
+        if (B_flag[i] == 1) {
+            size_t i0 = B[i*2+0];
+            size_t i1 = B[i*2+1];
+            rhs[i0*2+0] = 1;
+            rhs[i0*2+1] = 0;
+            rhs[i1*2+0] = 1;
+            rhs[i1*2+1] = 0;
+        }
+    }
     std::function<void(const vec&, vec&)> mult = [](const vec& x, vec& Mx){
         MMult(x.data(), Mx.data());
     };
-    Solve(mult, rhs, x, 10000);
+
+
+
+    Solve(mult, rhs, x, 1000);
     
     write_vtu("out.vtu", P, T, std::vector{std::make_tuple(std::string("Eta"),2,&x)});
     return 0;
