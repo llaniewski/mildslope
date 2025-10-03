@@ -111,7 +111,7 @@ void MMult(const double* x, double* Mx) {
 
 int main() {
     {
-        FILE* f = fopen("mesh/empty2_points.txt","rb");
+        FILE* f = fopen("mesh/mesh2_points.txt","rb");
         nP = 0;
         while (! feof(f)) {
             double x,y;
@@ -125,7 +125,7 @@ int main() {
     }
     printf("Points %ld\n", nP);
     {
-        FILE* f = fopen("mesh/empty2_triangles.txt","rb");
+        FILE* f = fopen("mesh/mesh2_triangles.txt","rb");
         nT = 0;
         while (! feof(f)) {
             size_t i1,i2,i3;
