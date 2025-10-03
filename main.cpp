@@ -4,6 +4,13 @@
 
 #include <math.h>
 
+
+#include <Eigen/Sparse>
+#include <Eigen/KLUSupport>
+#include <vector>
+#include <iostream>
+
+
 std::vector<double> P;
 size_t nP;
 std::vector<size_t> T;
@@ -109,6 +116,7 @@ int main() {
         while (! feof(f)) {
             double x,y;
             fscanf(f, "%lf %lf",&x,&y);
+            if (feof(f)) break;
             P.push_back(x);
             P.push_back(y);
             nP++;
@@ -122,6 +130,7 @@ int main() {
         while (! feof(f)) {
             size_t i1,i2,i3;
             fscanf(f, "%ld %ld %ld",&i1,&i2,&i3);
+            if (feof(f)) break;
             T.push_back(i1);
             T.push_back(i2);
             T.push_back(i3);
@@ -174,6 +183,7 @@ int main() {
     vec rhs;
     rhs.resize(2*nP);
     x.resize(2*nP);
+    for (size_t i=0; i<x.size(); i++) x[i] = 0;
     for (size_t i=0; i<nB; i++) {
         if (B_flag[i] == 1) {
             size_t i0 = B[i*2+0];
@@ -189,9 +199,51 @@ int main() {
     };
 
 
+    typedef Eigen::SparseMatrix<double> SpMat;  // declares a column-major sparse matrix type of double
+    typedef Eigen::Triplet<double> Trip;
 
-    Solve(mult, rhs, x, 1000);
-    
-    write_vtu("out.vtu", P, T, std::vector{std::make_tuple(std::string("Eta"),2,&x)});
+
+    std::vector<Trip> coef;
+    vec Mx; Mx.resize(x.size());
+//    FILE* outf = fopen("test.txt","w");
+    for (size_t i=0; i<x.size(); i++) {
+        x[i] = 1;
+        MMult(x.data(), Mx.data());
+        x[i] = 0;
+        //for (size_t j=0; j<x.size(); j++) printf("%ld %ld %lg\n",i,j,Mx[j]);
+        for (size_t j=0; j<x.size(); j++){
+//            fprintf(outf, "%lg ", Mx[j]);
+            if (fabs(Mx[j]) > 1e-6) {
+                coef.push_back(Trip(j,i,Mx[j]));
+            }
+        }
+//        fprintf(outf, "\n");
+        printf("mult %ld -> %ld\n", i, coef.size());
+    }
+//    fclose(outf);
+    printf("SpMat\n");
+    SpMat A(x.size(), x.size());
+    printf("setFromTriplets\n");
+    A.setFromTriplets(coef.begin(), coef.end());
+ 
+    printf("KLU\n");
+    Eigen::KLU<SpMat> solver;  // performs a Cholesky factorization of A
+    printf("compute\n");
+    solver.compute(A);
+    assert(solver.info() == Eigen::Success);
+    printf("solve\n");
+    Eigen::VectorXd b(rhs.size());
+    for (size_t i=0; i<rhs.size(); i++) b[i] = rhs[i];
+    Eigen::VectorXd ret = solver.solve(b);         // use the factorization to solve for the given right hand side
+    for (size_t i=0; i<ret.size(); i++) x[i] = ret[i];
+    Eigen::VectorXd ret_m = A * ret;
+    vec Ax; Ax.resize(ret_m.size());
+    for (size_t i=0; i<ret_m.size(); i++) Ax[i] = ret_m[i];
+
+    write_vtu("out.vtu", P, T, {
+        std::make_tuple(std::string("Eta"),2,&x),
+        std::make_tuple(std::string("RHS"),2,&rhs),
+        std::make_tuple(std::string("Ax"),2,&Ax)
+    });
     return 0;
 }
