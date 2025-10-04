@@ -229,7 +229,8 @@ int main() {
                 ref_j(i,k) = NA;
         for (size_t i=0;i<DOF;i++) {
             //printf("i:%ld\n",i);
-            for (int k=0;k<W;k++) {
+            int k;
+            for (k=0;k<W;k++) {
                 if (!ref_b(i,k)) {
                     ref_x(i,k) = 1.0;
                     //printf("i:%ld k:%ld\n",i,k);
@@ -245,14 +246,17 @@ int main() {
                             exit(2);
                         }
                     }
-                    if (k >= maxk) maxk = k + 1;
-                    //printf("i:%ld k:%ld\n",i,k);
                     break;
                 }
             }
+            if (k >= maxk) maxk = k + 1;
             //printf("i:%ld\n",i);
         }   
         printf("maxk: %d\n",maxk);
+        if (maxk > W) {
+            printf("Not enought colors\n");
+            exit(3);
+        }
     }
 
 
