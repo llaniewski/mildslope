@@ -9,7 +9,7 @@
 #include <Eigen/KLUSupport>
 #include <vector>
 #include <iostream>
-
+#include <set>
 
 std::vector<double> P;
 size_t nP;
@@ -153,7 +153,7 @@ int main() {
                 for (int j=0; j<3; j++) {
                     size_t idx = T[i*3+j];
                     if (fabs(P[idx*2+0] - val) < 1e-6) {
-                        printf("Added: %ld %ld\n",i, idx);
+                        //printf("Added: %ld %ld\n",i, idx);
                         B.push_back(idx);
                         count++;
                     }
@@ -202,25 +202,89 @@ int main() {
     typedef Eigen::SparseMatrix<double> SpMat;  // declares a column-major sparse matrix type of double
     typedef Eigen::Triplet<double> Trip;
 
+    const size_t DOFperP = 2;
+    const size_t DOF = nP*DOFperP;
+
+    const size_t W = 40;
+    const size_t NA = -1;
+    int maxk = 0;
+    Eigen::Matrix<size_t, Eigen::Dynamic, W> ref_j(DOF,W);
+    Eigen::Matrix<double, Eigen::Dynamic, W> ref_x(DOF,W);
+    {
+        Eigen::Matrix<bool, Eigen::Dynamic, W> ref_b(DOF,W);
+        printf("construct graph\n");
+        std::vector<std::set<size_t>> graph(DOF);
+        for (size_t i=0;i<nT;i++) {
+            size_t Ti[3];
+            for (char j=0;j<3;j++) Ti[j] = T[i*3+j];
+            for (char j=0;j<3;j++)
+                for (char k=0;k<3;k++)
+                    for (char d1=0;d1<DOFperP;d1++)
+                        for (char d2=0;d2<DOFperP;d2++)
+                            graph[Ti[j]*DOFperP+d1].insert(Ti[k]*DOFperP+d2);
+        }
+        printf("done\n");
+        for (size_t i=0;i<DOF;i++)
+            for (int k=0;k<W;k++)
+                ref_j(i,k) = NA;
+        for (size_t i=0;i<DOF;i++) {
+            //printf("i:%ld\n",i);
+            for (int k=0;k<W;k++) {
+                if (!ref_b(i,k)) {
+                    ref_x(i,k) = 1.0;
+                    //printf("i:%ld k:%ld\n",i,k);
+                    for (size_t j : graph[i]) {
+                        //printf("i:%ld k:%ld j:%ld\n",i,k,j);
+                        if (ref_j(j,k) == NA) {
+                            ref_j(j,k) = i;
+                            for (size_t p : graph[j]) {
+                                ref_b(p,k) = true;
+                            }
+                        } else {
+                            printf("wrong\n");
+                            exit(2);
+                        }
+                    }
+                    if (k >= maxk) maxk = k + 1;
+                    //printf("i:%ld k:%ld\n",i,k);
+                    break;
+                }
+            }
+            //printf("i:%ld\n",i);
+        }   
+        printf("maxk: %d\n",maxk);
+    }
+
+
+    assert(x.size() == DOF);
 
     std::vector<Trip> coef;
     vec Mx; Mx.resize(x.size());
-//    FILE* outf = fopen("test.txt","w");
-    for (size_t i=0; i<x.size(); i++) {
-        x[i] = 1;
-        MMult(x.data(), Mx.data());
-        x[i] = 0;
-        //for (size_t j=0; j<x.size(); j++) printf("%ld %ld %lg\n",i,j,Mx[j]);
-        for (size_t j=0; j<x.size(); j++){
-//            fprintf(outf, "%lg ", Mx[j]);
+    // for (size_t i=0; i<x.size(); i++) {
+    //     x[i] = 1;
+    //     MMult(x.data(), Mx.data());
+    //     x[i] = 0;
+    //     for (size_t j=0; j<x.size(); j++){
+    //         if (fabs(Mx[j]) > 1e-6) {
+    //             coef.push_back(Trip(j,i,Mx[j]));
+    //         }
+    //     }
+    //     printf("mult %ld -> %ld\n", i, coef.size());
+    // }
+    // coef.clear();
+
+    for (int k=0; k<maxk; k++) {
+        MMult(ref_x.col(k).data(), Mx.data());
+        for (size_t j=0; j<DOF; j++){
             if (fabs(Mx[j]) > 1e-6) {
-                coef.push_back(Trip(j,i,Mx[j]));
+                coef.push_back(Trip(j,ref_j(j,k),Mx[j]));
             }
         }
-//        fprintf(outf, "\n");
-        printf("mult %ld -> %ld\n", i, coef.size());
+       printf("mult %ld -> %ld\n", k, coef.size());
     }
-//    fclose(outf);
+
+
+    //    fclose(outf);
     printf("SpMat\n");
     SpMat A(x.size(), x.size());
     printf("setFromTriplets\n");
