@@ -201,10 +201,10 @@ int main() {
             double vy = y1-y0;
             double len = sqrt(vx*vx+vy*vy);
             double b = 2*len;
-            rhs[i0*2+0] += b;
-            rhs[i0*2+1] += 0;
-            rhs[i1*2+0] += b;
-            rhs[i1*2+1] += 0;
+            rhs[i0*2+0] += 0;
+            rhs[i0*2+1] += -b;
+            rhs[i1*2+0] += 0;
+            rhs[i1*2+1] += -b;
         }
     }
     std::function<void(const vec&, vec&)> mult = [](const vec& x, vec& Mx){
