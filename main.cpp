@@ -19,7 +19,7 @@ std::vector<size_t> B;
 std::vector<int> B_flag;
 size_t nB;
 
-double k = 1;
+double k = 2;
 
 void MMult(const double* x, double* Mx) {
     double M00,M01,M02,M11,M12,M22;
@@ -94,10 +94,14 @@ void MMult(const double* x, double* Mx) {
         EM00 = EM11 = 1.0/3.0;
         EM01 = 1.0/6.0;
         if (B_flag[i] == 1) {
-            Mx[i0*2+0] =  x[i0*2+0];
-            Mx[i0*2+1] =  x[i0*2+1];
-            Mx[i1*2+0] =  x[i1*2+0];
-            Mx[i1*2+1] =  x[i1*2+1];
+            // Mx[i0*2+0] =  x[i0*2+0];
+            // Mx[i0*2+1] =  x[i0*2+1];
+            // Mx[i1*2+0] =  x[i1*2+0];
+            // Mx[i1*2+1] =  x[i1*2+1];
+            Mx[i0*2+0] +=  b*robin*(EM00 * x[i0*2+1] + EM01 * x[i1*2+1]);
+            Mx[i1*2+0] +=  b*robin*(EM01 * x[i0*2+1] + EM11 * x[i1*2+1]);
+            Mx[i0*2+1] += -b*robin*(EM00 * x[i0*2+0] + EM01 * x[i1*2+0]);
+            Mx[i1*2+1] += -b*robin*(EM01 * x[i0*2+0] + EM11 * x[i1*2+0]);
         } else if (B_flag[i] == 2) {
             Mx[i0*2+0] +=  b*robin*(EM00 * x[i0*2+1] + EM01 * x[i1*2+1]);
             Mx[i1*2+0] +=  b*robin*(EM01 * x[i0*2+1] + EM11 * x[i1*2+1]);
@@ -110,8 +114,9 @@ void MMult(const double* x, double* Mx) {
 
 
 int main() {
+    std::string mesh = "mesh/mesh2";
     {
-        FILE* f = fopen("mesh/mesh2_points.txt","rb");
+        FILE* f = fopen((mesh+"_points.txt").c_str(),"rb");
         nP = 0;
         while (! feof(f)) {
             double x,y;
@@ -125,7 +130,7 @@ int main() {
     }
     printf("Points %ld\n", nP);
     {
-        FILE* f = fopen("mesh/mesh2_triangles.txt","rb");
+        FILE* f = fopen((mesh+"_triangles.txt").c_str(),"rb");
         nT = 0;
         while (! feof(f)) {
             size_t i1,i2,i3;
@@ -188,10 +193,18 @@ int main() {
         if (B_flag[i] == 1) {
             size_t i0 = B[i*2+0];
             size_t i1 = B[i*2+1];
-            rhs[i0*2+0] = 1;
-            rhs[i0*2+1] = 0;
-            rhs[i1*2+0] = 1;
-            rhs[i1*2+1] = 0;
+            double x0 = P[i0*2+0];
+            double y0 = P[i0*2+1];
+            double x1 = P[i1*2+0];
+            double y1 = P[i1*2+1];
+            double vx = x1-x0;
+            double vy = y1-y0;
+            double len = sqrt(vx*vx+vy*vy);
+            double b = 2*len;
+            rhs[i0*2+0] += b;
+            rhs[i0*2+1] += 0;
+            rhs[i1*2+0] += b;
+            rhs[i1*2+1] += 0;
         }
     }
     std::function<void(const vec&, vec&)> mult = [](const vec& x, vec& Mx){
