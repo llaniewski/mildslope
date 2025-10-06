@@ -351,23 +351,28 @@ int main() {
 //            std::make_tuple(std::string("res"), 2, to_span(res)),
             std::make_tuple(std::string("par"), 1, std::span(par.col(0).data(),par.col(0).size()))
         });
+        iter++;
         return obj[0];
     };
     
     Eigen::VectorXd pr(2*NPAR);
     Eigen::VectorXd gr(2*NPAR);
-    pr(2) += 0.05;
-    pr(5) += -0.05;
-    double val = objective(pr.data(), gr.data());
-    double h = 1e-4;
-    for (int i=0; i<2*NPAR; i++) {
-        pr(i) += h;
-        double val1 = objective(pr.data(), NULL);
-        pr(i) -= 2*h;
-        double val2 = objective(pr.data(), NULL);
-        pr(i) += h;
-        double fd = (val1-val2)/(2*h);
-        printf("grad: %d %lg -- %lg => %lg\n", i, fd, gr(i), fd - gr(i));
+    // pr(2) += 0.05;
+    // pr(5) += -0.05;
+    // double val = objective(pr.data(), gr.data());
+    // double h = 1e-4;
+    // for (int i=0; i<2*NPAR; i++) {
+    //     pr(i) += h;
+    //     double val1 = objective(pr.data(), NULL);
+    //     pr(i) -= 2*h;
+    //     double val2 = objective(pr.data(), NULL);
+    //     pr(i) += h;
+    //     double fd = (val1-val2)/(2*h);
+    //     printf("grad: %d %lg -- %lg => %lg\n", i, fd, gr(i), fd - gr(i));
+    // }
+    for (int k=0; k<30; k++) {
+        double val = objective(pr.data(), gr.data());
+        pr += -1e-3*gr;
     }
     return 0;
 }
