@@ -10,3 +10,4 @@ problem_d.c : problem.c
 
 problem_b.c : problem.c
 	$(TAPENADE) -b -head 'problem(obj)/(x,points)' $<
+	sed -e '/adStack/s|^|//|' -i $@
