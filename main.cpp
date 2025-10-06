@@ -6,10 +6,11 @@
 
 #include <Eigen/Sparse>
 #include <Eigen/KLUSupport>
+#include <Eigen/LU>
 #include <vector>
 #include <iostream>
 #include <set>
-
+#include <fstream>
 
 size_t * triangles;
 size_t n_triangles;
@@ -111,11 +112,63 @@ int main() {
     nB = B.size()/2;
     printf("Borders: %ld\n", nB);
 
-
-
     const size_t DOFperP = 2;
     const size_t DOF = nP*DOFperP;
 
+    const size_t NPAR_SIDE = 10;
+    const size_t NPAR = 2*NPAR_SIDE;
+    Eigen::Matrix<double, Eigen::Dynamic, NPAR> par(nP,NPAR);
+    if (true) {
+        const auto& fun = [](double x1, double y1, double x2, double y2) {
+            double ret = 1;
+            if (x2 < 3) ret = 0;
+            else if (x2 < x1) ret = (x2 - 3)/(x1 - 3);
+            else if (x2 < 7) ret = (x2 - 7)/(x1 - 7);
+            else ret = 0;
+            if (y1 == 0.0) ret = ret * (1-y2) / (1-y1);
+            else if (y1 == 1.0) ret = ret * (0 - y2) / (0-y1);
+            else exit(3);
+            double r = sqrt((5-x2)*(5-x2) + (0.5-y2)*(0.5-y2));
+            if (r < 0.3) ret = 0;
+            else if (r < 0.5) ret = ret * (r-0.3)/(0.5-0.3);
+            else ret = ret;
+            return ret;
+        };
+        Eigen::Matrix<double, NPAR, 2> par_points(NPAR,2);
+        for (int i = 0; i<NPAR_SIDE; i++) {
+            par_points(i,0) = 3.0+(7.0-3.0)*(i+1)/(NPAR_SIDE+1);
+            par_points(i,1) = 0.0;
+            par_points(i+NPAR_SIDE,0) = 3.0+(7.0-3.0)*(i+1)/(NPAR_SIDE+1);
+            par_points(i+NPAR_SIDE,1) = 1.0;
+        }
+        std::cout << par_points << '\n';
+        Eigen::Matrix<double, NPAR, NPAR> par_cross(NPAR, NPAR);
+        for (int i = 0; i<NPAR; i++) {
+            for (int j = 0; j<NPAR; j++) {
+                par_cross(i,j) = fun(par_points(j,0),par_points(j,1),par_points(i,0),par_points(i,1));
+            }
+        }
+        // std::cout << par_cross << '\n';
+        // {
+        //     std::ofstream file("mat.txt");
+        //     file << par_cross << '\n';
+        // }
+        // {
+        //     std::ofstream file("inv.txt");
+        //     file << par_cross.inverse() << '\n';
+        // }
+        Eigen::Matrix<double, Eigen::Dynamic, NPAR> par_a(nP, NPAR);
+        for (int i = 0; i<nP; i++) {
+            for (int j = 0; j<NPAR; j++) {
+                par_a(i,j) = fun(par_points(j,0),par_points(j,1),P[2*i+0],P[2*i+1]);
+            }
+        }
+        
+        par = par_a * par_cross.inverse();
+
+        // Eigen::Matrix<double, Eigen::Dynamic, NPAR> par_test = par_cross * par_cross.inverse();
+        // std::cout << par_test << '\n';
+    }
 
     // Graph coloring
     const size_t W = 40;
@@ -271,13 +324,16 @@ int main() {
     
     Eigen::VectorXd p_adj = Pb - dRdP.transpose() * x_adj;
 
-
+    Eigen::MatrixXd grad = p_adj.reshaped(2,nP) * par;
+    std::cout << grad << "\n";
+    
     write_vtu("out.vtu", P, T, {
         std::make_tuple(std::string("Eta"), 2, to_span(x)),
         std::make_tuple(std::string("Eta_adj"), 2, to_span(x_adj)),
         std::make_tuple(std::string("Pb"), 2, to_span(Pb)),
         std::make_tuple(std::string("grad"), 2, to_span(p_adj)),
-        std::make_tuple(std::string("res"), 2, to_span(res))
+        std::make_tuple(std::string("res"), 2, to_span(res)),
+        std::make_tuple(std::string("par"), 1, std::span(par.col(0).data(),par.col(0).size()))
     });
     return 0;
 }
