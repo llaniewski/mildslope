@@ -34,7 +34,6 @@ std::span<T> to_span(Eigen::Matrix<T, Eigen::Dynamic, 1>& vec) { return std::spa
 
 int main() {
 
-    std::vector<double> P;
     size_t nP;
     std::vector<size_t> T;
     size_t nT;
@@ -43,19 +42,25 @@ int main() {
     size_t nB;
 
     std::string mesh = "mesh/mesh2";
-
+    Eigen::Matrix<double, 2, Eigen::Dynamic> P;
     {
+        std::vector<double> Pv;
         FILE* f = fopen((mesh+"_points.txt").c_str(),"rb");
         nP = 0;
         while (! feof(f)) {
             double x,y;
             fscanf(f, "%lf %lf",&x,&y);
             if (feof(f)) break;
-            P.push_back(x);
-            P.push_back(y);
+            Pv.push_back(x);
+            Pv.push_back(y);
             nP++;
         }
         fclose(f);
+        P.resize(2, nP);
+        for (size_t i=0;i<nP;i++) {
+            P(0,i) = Pv[2*i+0];
+            P(1,i) = Pv[2*i+1];
+        }
     }
     printf("Points %ld\n", nP);
     {
@@ -75,10 +80,10 @@ int main() {
     printf("Triangles: %ld\n", nT);
 
     {
-        double maxx=P[0], minx=P[0];
+        double maxx=P(0,0), minx=P(0,0);
         for (size_t i=0;i<nP;i++) {
-            if (P[i*2+0] > maxx) maxx = P[i*2+0];
-            if (P[i*2+0] < minx) minx = P[i*2+0];
+            if (P(0,i) > maxx) maxx = P(0,i);
+            if (P(0,i) < minx) minx = P(0,i);
         }
         printf("X: [%lg, %lg]\n", minx, maxx);
         auto fun = [&nT,&T,&nP,&P,&nB,&B,&B_flag](double val, int flag){
@@ -86,7 +91,7 @@ int main() {
                 int count=0;
                 for (int j=0; j<3; j++) {
                     size_t idx = T[i*3+j];
-                    if (fabs(P[idx*2+0] - val) < 1e-6) {
+                    if (fabs(P(0,idx) - val) < 1e-6) {
                         //printf("Added: %ld %ld\n",i, idx);
                         B.push_back(idx);
                         count++;
@@ -160,7 +165,7 @@ int main() {
         Eigen::Matrix<double, Eigen::Dynamic, NPAR> par_a(nP, NPAR);
         for (int i = 0; i<nP; i++) {
             for (int j = 0; j<NPAR; j++) {
-                par_a(i,j) = fun(par_points(j,0),par_points(j,1),P[2*i+0],P[2*i+1]);
+                par_a(i,j) = fun(par_points(j,0),par_points(j,1),P(0,i),P(1,i));
             }
         }
         
@@ -326,8 +331,10 @@ int main() {
 
     Eigen::MatrixXd grad = p_adj.reshaped(2,nP) * par;
     std::cout << grad << "\n";
-    
-    write_vtu("out.vtu", P, T, {
+
+
+
+    write_vtu("out.vtu", std::span(P.data(), P.size()), T, {
         std::make_tuple(std::string("Eta"), 2, to_span(x)),
         std::make_tuple(std::string("Eta_adj"), 2, to_span(x_adj)),
         std::make_tuple(std::string("Pb"), 2, to_span(Pb)),
@@ -335,5 +342,7 @@ int main() {
         std::make_tuple(std::string("res"), 2, to_span(res)),
         std::make_tuple(std::string("par"), 1, std::span(par.col(0).data(),par.col(0).size()))
     });
+    P = P - 1e-7*grad * par.transpose();
+    
     return 0;
 }
