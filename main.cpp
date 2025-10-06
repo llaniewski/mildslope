@@ -243,7 +243,13 @@ int main() {
     // problem coefficient
     double wave_k = 4.0;
 
-    for (int iter=0; iter<20; iter++) {
+    Eigen::Matrix<double, 2, Eigen::Dynamic> P0 = P;
+
+    int iter = 0;
+    const auto& objective = [&](double *x_, double* grad_) -> double {
+
+        P = P0 + Eigen::Map< Eigen::Matrix<double, 2, Eigen::Dynamic> >(x_, 2, NPAR) * par.transpose();
+
         Eigen::VectorXd x(DOF);
         Eigen::VectorXd res(DOF);
         Eigen::VectorXd obj(1);
@@ -257,7 +263,6 @@ int main() {
         Eigen::VectorXd Pd(DOF);
         Eigen::VectorXd res_tmp(DOF);
         Eigen::VectorXd obj_tmp(1);
-        Eigen::VectorXd objd_tmp(1);
 
         Eigen::VectorXd Mx(DOF);
 
@@ -294,57 +299,75 @@ int main() {
         problem(wave_k, P.data(), x.data(), res.data(), obj.data());
         printf("obj:%lg\n", obj[0]);
         // ADJOINT
+        if (grad_ != NULL) {
+            Eigen::VectorXd Pb(DOF);
+            Eigen::VectorXd xb(DOF);
+            Eigen::VectorXd objb(1);
+            objb[0] = 1;
+            problem_b(wave_k, P.data(), Pb.data(), x.data(), xb.data(), res_tmp.data(), obj_tmp.data(), objb.data());
 
-        Eigen::VectorXd Pb(DOF);
-        Eigen::VectorXd xb(DOF);
-        Eigen::VectorXd objb(1);
-        objb[0] = 1;
-        problem_b(wave_k, P.data(), Pb.data(), x.data(), xb.data(), res_tmp.data(), obj_tmp.data(), objb.data());
-
-        Eigen::VectorXd x_adj;
-        {   
-            printf("Solving adjoint problem");
-            Eigen::KLU<SpMat> solver;  // performs a Cholesky factorization of A
-            printf(" [compute]");
-            solver.compute(A.transpose()); assert(solver.info() == Eigen::Success);
-            printf(" [solve]");
-            x_adj = solver.solve(xb); assert(solver.info() == Eigen::Success);
-            printf(" [done]\n");
-        }
-        
-        SpMat dRdP(DOF,DOF);
-        {
-            printf("Gathering dRdP...\n");
-            std::vector<Trip> coef;
-            for (int k=0; k<maxk; k++) {
-                problem_dP(wave_k, P.data(), ref_x.col(k).data(), x.data(), res_tmp.data(), Mx.data(), obj_tmp.data());
-                for (size_t j=0; j<DOF; j++){
-                    if (fabs(Mx[j]) > 1e-6) {
-                        coef.push_back(Trip(j,ref_j(j,k),Mx[j]));
-                    }
-                }
-                printf("mult %ld -> %ld\n", k, coef.size());
+            Eigen::VectorXd x_adj;
+            {   
+                printf("Solving adjoint problem");
+                Eigen::KLU<SpMat> solver;  // performs a Cholesky factorization of A
+                printf(" [compute]");
+                solver.compute(A.transpose()); assert(solver.info() == Eigen::Success);
+                printf(" [solve]");
+                x_adj = solver.solve(xb); assert(solver.info() == Eigen::Success);
+                printf(" [done]\n");
             }
-            printf("Constructing B from triplets\n");
-            dRdP.setFromTriplets(coef.begin(), coef.end());
-        }
-        
-        Eigen::VectorXd p_adj = Pb - dRdP.transpose() * x_adj;
+            
+            SpMat dRdP(DOF,DOF);
+            {
+                printf("Gathering dRdP...\n");
+                std::vector<Trip> coef;
+                for (int k=0; k<maxk; k++) {
+                    problem_dP(wave_k, P.data(), ref_x.col(k).data(), x.data(), res_tmp.data(), Mx.data(), obj_tmp.data());
+                    for (size_t j=0; j<DOF; j++){
+                        if (fabs(Mx[j]) > 1e-6) {
+                            coef.push_back(Trip(j,ref_j(j,k),Mx[j]));
+                        }
+                    }
+                    printf("mult %ld -> %ld\n", k, coef.size());
+                }
+                printf("Constructing B from triplets\n");
+                dRdP.setFromTriplets(coef.begin(), coef.end());
+            }
+            
+            Eigen::VectorXd p_adj = Pb - dRdP.transpose() * x_adj;
 
-        Eigen::MatrixXd grad = p_adj.reshaped(2,nP) * par;
-        std::cout << grad << "\n";
+            Eigen::Map< Eigen::Matrix<double, 2, Eigen::Dynamic> > grad(grad_, 2, NPAR);
+            grad = p_adj.reshaped(2,nP) * par;
+            std::cout << grad << "\n";
+        }
 
         char buf[1024];
         sprintf(buf, "out_%04d.vtu", iter);
         write_vtu(buf, std::span(P.data(), P.size()), T, {
             std::make_tuple(std::string("Eta"), 2, to_span(x)),
-            std::make_tuple(std::string("Eta_adj"), 2, to_span(x_adj)),
-            std::make_tuple(std::string("Pb"), 2, to_span(Pb)),
-            std::make_tuple(std::string("grad"), 2, to_span(p_adj)),
-            std::make_tuple(std::string("res"), 2, to_span(res)),
+//            std::make_tuple(std::string("Eta_adj"), 2, to_span(x_adj)),
+//            std::make_tuple(std::string("Pb"), 2, to_span(Pb)),
+//            std::make_tuple(std::string("grad"), 2, to_span(p_adj)),
+//            std::make_tuple(std::string("res"), 2, to_span(res)),
             std::make_tuple(std::string("par"), 1, std::span(par.col(0).data(),par.col(0).size()))
         });
-        P = P - 1e-3*grad * par.transpose();
+        return obj[0];
+    };
+    
+    Eigen::VectorXd pr(2*NPAR);
+    Eigen::VectorXd gr(2*NPAR);
+    pr(2) += 0.05;
+    pr(5) += -0.05;
+    double val = objective(pr.data(), gr.data());
+    double h = 1e-4;
+    for (int i=0; i<2*NPAR; i++) {
+        pr(i) += h;
+        double val1 = objective(pr.data(), NULL);
+        pr(i) -= 2*h;
+        double val2 = objective(pr.data(), NULL);
+        pr(i) += h;
+        double fd = (val1-val2)/(2*h);
+        printf("grad: %d %lg -- %lg => %lg\n", i, fd, gr(i), fd - gr(i));
     }
     return 0;
 }
