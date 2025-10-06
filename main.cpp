@@ -19,12 +19,17 @@ int * boundary_flag;
 size_t n_boundary;
 extern "C" {
     void problem(double wave_k, const double *points, const double* x, double* res, double* obj);
-    void problem_d(double wave_k, const double *points, const double *pointsd, const double *x, const double *xd, double *res, double *resd, double *obj, double *objd);
-    //void problem_d(double k, const double *points, const double *x, const double *xd, double *res, double *resd, double *obj);
+    void problem_d(double wave_k, const double *points, const double *pointsd, const double *x, const double *xd, double *res, double *resd, double *obj);
+    void problem_dP(double wave_k, const double *points, const double *pointsd, const double *x, double *res, double *resd, double *obj);
+    void problem_dX(double wave_k, const double *points, const double *x, const double *xd, double *res, double *resd, double *obj);
+    void problem_b(double wave_k, const double *points, double *pointsb, const double *x, double *xb, double *res, double *obj, const double *objb);
 }
 
 typedef Eigen::SparseMatrix<double> SpMat;
 typedef Eigen::Triplet<double> Trip;
+
+template <class T>
+std::span<T> to_span(Eigen::Matrix<T, Eigen::Dynamic, 1>& vec) { return std::span(vec.data(), vec.size()); }
 
 int main() {
 
@@ -36,7 +41,7 @@ int main() {
     std::vector<int> B_flag;
     size_t nB;
 
-    std::string mesh = "mesh/empty2";
+    std::string mesh = "mesh/mesh2";
 
     {
         FILE* f = fopen((mesh+"_points.txt").c_str(),"rb");
@@ -184,6 +189,8 @@ int main() {
     Eigen::VectorXd obj(1);
 
     problem(wave_k, P.data(), x.data(), res.data(), obj.data());
+    printf("obj:%lg\n", obj[0]);
+
     double resL2 = res.norm();
     printf("Residual: %lg\n", resL2);
     
@@ -194,37 +201,83 @@ int main() {
 
     Eigen::VectorXd Mx(DOF);
 
-    printf("Gathering Jacobian...\n");
-    std::vector<Trip> coef;
-    for (int k=0; k<maxk; k++) {
-        problem_d(wave_k, P.data(), Pd.data(), x.data(), ref_x.col(k).data(), res_tmp.data(), Mx.data(), obj_tmp.data(), objd_tmp.data());
-        for (size_t j=0; j<DOF; j++){
-            if (fabs(Mx[j]) > 1e-6) {
-                coef.push_back(Trip(j,ref_j(j,k),Mx[j]));
-            }
-        }
-        printf("mult %ld -> %ld\n", k, coef.size());
-    }
     SpMat A(DOF,DOF);
+    {
+        printf("Gathering Jacobian...\n");
+        std::vector<Trip> coef;
+        for (int k=0; k<maxk; k++) {
+            problem_dX(wave_k, P.data(), x.data(), ref_x.col(k).data(), res_tmp.data(), Mx.data(), obj_tmp.data());
+            for (size_t j=0; j<DOF; j++){
+                if (fabs(Mx[j]) > 1e-6) {
+                    coef.push_back(Trip(j,ref_j(j,k),Mx[j]));
+                }
+            }
+            printf("mult %ld -> %ld\n", k, coef.size());
+        }
+        printf("Constructing Jacobian from triplets\n");
+        A.setFromTriplets(coef.begin(), coef.end());
+    }
 
-    printf("Constructing Jacobian from triplets\n");
-    A.setFromTriplets(coef.begin(), coef.end());
- 
-    printf("Solving linear problem");
-    Eigen::KLU<SpMat> solver;  // performs a Cholesky factorization of A
-    printf(" [compute]");
-    solver.compute(A); assert(solver.info() == Eigen::Success);
-    printf(" [solve]");
-    Eigen::VectorXd ret = solver.solve(res); assert(solver.info() == Eigen::Success);
-    printf(" [done]\n");
+    {
+        printf("Solving linear problem");
+        Eigen::KLU<SpMat> solver;  // performs a Cholesky factorization of A
+        printf(" [compute]");
+        solver.compute(A); assert(solver.info() == Eigen::Success);
+        printf(" [solve]");
+        Eigen::VectorXd ret = solver.solve(res); assert(solver.info() == Eigen::Success);
+        printf(" [done]\n");
+        for (size_t i=0; i<ret.size(); i++) x[i] -= ret[i];
+    }
 
-    for (size_t i=0; i<ret.size(); i++) x[i] -= ret[i];
+    
 
     problem(wave_k, P.data(), x.data(), res.data(), obj.data());
+    printf("obj:%lg\n", obj[0]);
+    // ADJOINT
+
+    Eigen::VectorXd Pb(DOF);
+    Eigen::VectorXd xb(DOF);
+    Eigen::VectorXd objb(1);
+    objb[0] = 1;
+    problem_b(wave_k, P.data(), Pb.data(), x.data(), xb.data(), res_tmp.data(), obj_tmp.data(), objb.data());
+
+    Eigen::VectorXd x_adj;
+    {   
+        printf("Solving adjoint problem");
+        Eigen::KLU<SpMat> solver;  // performs a Cholesky factorization of A
+        printf(" [compute]");
+        solver.compute(A.transpose()); assert(solver.info() == Eigen::Success);
+        printf(" [solve]");
+        x_adj = solver.solve(xb); assert(solver.info() == Eigen::Success);
+        printf(" [done]\n");
+    }
+    
+    SpMat dRdP(DOF,DOF);
+    {
+        printf("Gathering dRdP...\n");
+        std::vector<Trip> coef;
+        for (int k=0; k<maxk; k++) {
+            problem_dP(wave_k, P.data(), ref_x.col(k).data(), x.data(), res_tmp.data(), Mx.data(), obj_tmp.data());
+            for (size_t j=0; j<DOF; j++){
+                if (fabs(Mx[j]) > 1e-6) {
+                    coef.push_back(Trip(j,ref_j(j,k),Mx[j]));
+                }
+            }
+            printf("mult %ld -> %ld\n", k, coef.size());
+        }
+        printf("Constructing B from triplets\n");
+        dRdP.setFromTriplets(coef.begin(), coef.end());
+    }
+    
+    Eigen::VectorXd p_adj = Pb - dRdP.transpose() * x_adj;
+
 
     write_vtu("out.vtu", P, T, {
-        std::make_tuple(std::string("Eta"),2,std::span(x.data(),x.size())),
-        std::make_tuple(std::string("res"),2,std::span(res.data(),res.size()))
+        std::make_tuple(std::string("Eta"), 2, to_span(x)),
+        std::make_tuple(std::string("Eta_adj"), 2, to_span(x_adj)),
+        std::make_tuple(std::string("Pb"), 2, to_span(Pb)),
+        std::make_tuple(std::string("grad"), 2, to_span(p_adj)),
+        std::make_tuple(std::string("res"), 2, to_span(res))
     });
     return 0;
 }

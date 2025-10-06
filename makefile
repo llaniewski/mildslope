@@ -6,8 +6,8 @@ main: main.o vtu_write.o solve.o problem.o problem_d.o problem_b.o
 	$(CXX) $(CXXFLAGS) -o $@ $^ -lklu
 
 problem_d.c : problem.c
-	$(TAPENADE) -d -head 'problem(res,obj)/(x,points)' $<
+	$(TAPENADE) -fixinterface -d -head 'problem[X](res)/(x)' -head 'problem[P](res)/(points)' $<
 
 problem_b.c : problem.c
-	$(TAPENADE) -b -head 'problem(obj)/(x,points)' $<
+	$(TAPENADE) -fixinterface -b -head 'problem(obj)/(x,points)' $<
 	sed -e '/adStack/s|^|//|' -i $@
