@@ -18,8 +18,8 @@ size_t * boundary;
 int * boundary_flag;
 size_t n_boundary;
 extern "C" {
-    void problem(double k, const double *points, const double* x, double* res, double* obj);
-    void problem_d(double k, const double *points, const double *pointsd, const double *x, const double *xd, double *res, double *resd, double *obj, double *objd);
+    void problem(double wave_k, const double *points, const double* x, double* res, double* obj);
+    void problem_d(double wave_k, const double *points, const double *pointsd, const double *x, const double *xd, double *res, double *resd, double *obj, double *objd);
     //void problem_d(double k, const double *points, const double *x, const double *xd, double *res, double *resd, double *obj);
 }
 
@@ -177,13 +177,13 @@ int main() {
     n_boundary = nB;
 
     // problem coefficient
-    double k = 2.0;
+    double wave_k = 4.0;
 
     Eigen::VectorXd x(DOF);
     Eigen::VectorXd res(DOF);
     Eigen::VectorXd obj(1);
 
-    problem(k, P.data(), x.data(), res.data(), obj.data());
+    problem(wave_k, P.data(), x.data(), res.data(), obj.data());
     double resL2 = res.norm();
     printf("Residual: %lg\n", resL2);
     
@@ -197,7 +197,7 @@ int main() {
     printf("Gathering Jacobian...\n");
     std::vector<Trip> coef;
     for (int k=0; k<maxk; k++) {
-        problem_d(2, P.data(), Pd.data(), x.data(), ref_x.col(k).data(), res_tmp.data(), Mx.data(), obj_tmp.data(), objd_tmp.data());
+        problem_d(wave_k, P.data(), Pd.data(), x.data(), ref_x.col(k).data(), res_tmp.data(), Mx.data(), obj_tmp.data(), objd_tmp.data());
         for (size_t j=0; j<DOF; j++){
             if (fabs(Mx[j]) > 1e-6) {
                 coef.push_back(Trip(j,ref_j(j,k),Mx[j]));
@@ -220,7 +220,7 @@ int main() {
 
     for (size_t i=0; i<ret.size(); i++) x[i] -= ret[i];
 
-    problem(k, P.data(), x.data(), res.data(), obj.data());
+    problem(wave_k, P.data(), x.data(), res.data(), obj.data());
 
     write_vtu("out.vtu", P, T, {
         std::make_tuple(std::string("Eta"),2,std::span(x.data(),x.size())),
