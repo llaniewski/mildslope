@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-void write_vtu(char* filename, vec& points, std::vector<size_t>& triangles, std::vector<std::tuple<std::string, int, vec*>> fields) {
+void write_vtu(char* filename, std::span<double> points, std::span<size_t> triangles, const std::vector<std::tuple<std::string, int, std::span<double>>> fields) {
     FILE* f = fopen(filename, "w");
     if (f == NULL) {
         fprintf(stderr, "Failed to open file: %s\n", filename);
@@ -22,7 +22,7 @@ void write_vtu(char* filename, vec& points, std::vector<size_t>& triangles, std:
     for (const auto& field : fields) {
         const std::string name = std::get<0>(field);
         const int comp = std::get<1>(field);
-        const vec& vals = *std::get<2>(field);
+        const std::span<double> vals = std::get<2>(field);
         printf("Writing %s with %d components (%ld values)\n", name.c_str(), comp, vals.size());
         if (vals.size() != npoints*comp) {
             fprintf(stderr, "Wrong number of elements in field %s\n", name.c_str());

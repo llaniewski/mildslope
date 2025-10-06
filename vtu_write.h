@@ -5,7 +5,8 @@
 
 #include <string>
 #include <tuple>
+#include <span>
 
-void write_vtu(char* filename, std::vector<double>& points, std::vector<size_t>& triangles, const std::vector<std::tuple<std::string, int, std::vector<double>*>> fields);
+void write_vtu(char* filename, std::span<double> points, std::span<size_t> triangles, const std::vector<std::tuple<std::string, int, std::span<double>>> fields);
 
 #endif
