@@ -3,7 +3,7 @@ CFLAGS+=-O3
 TAPENADE=$(HOME)/tapenade/tapenade_3.16/bin/tapenade
 
 main: main.o vtu_write.o solve.o problem.o problem_d.o problem_b.o
-	$(CXX) $(CXXFLAGS) -o $@ $^ -lklu
+	$(CXX) $(CXXFLAGS) -o $@ $^ -lklu -lnlopt
 
 problem_d.c : problem.c
 	$(TAPENADE) -fixinterface -d -head 'problem[X](res)/(x)' -head 'problem[P](res)/(points)' $<

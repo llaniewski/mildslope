@@ -11,6 +11,7 @@
 #include <iostream>
 #include <set>
 #include <fstream>
+#include <nlopt.h>
 
 size_t * triangles;
 size_t n_triangles;
@@ -246,9 +247,9 @@ int main() {
     Eigen::Matrix<double, 2, Eigen::Dynamic> P0 = P;
 
     int iter = 0;
-    const auto& objective = [&](double *x_, double* grad_) -> double {
+    const auto& objective = [&](const double *x_, double* grad_) -> double {
 
-        P = P0 + Eigen::Map< Eigen::Matrix<double, 2, Eigen::Dynamic> >(x_, 2, NPAR) * par.transpose();
+        P = P0 + Eigen::Map< const Eigen::Matrix<double, 2, Eigen::Dynamic> >(x_, 2, NPAR) * par.transpose();
 
         Eigen::VectorXd x(DOF);
         Eigen::VectorXd res(DOF);
@@ -270,7 +271,7 @@ int main() {
         {
             printf("Gathering Jacobian...\n");
             std::vector<Trip> coef;
-            for (int k=0; k<maxk; k++) {
+            for (size_t k=0; k<maxk; k++) {
                 problem_dX(wave_k, P.data(), x.data(), ref_x.col(k).data(), res_tmp.data(), Mx.data(), obj_tmp.data());
                 for (size_t j=0; j<DOF; j++){
                     if (fabs(Mx[j]) > 1e-6) {
@@ -321,7 +322,7 @@ int main() {
             {
                 printf("Gathering dRdP...\n");
                 std::vector<Trip> coef;
-                for (int k=0; k<maxk; k++) {
+                for (size_t k=0; k<maxk; k++) {
                     problem_dP(wave_k, P.data(), ref_x.col(k).data(), x.data(), res_tmp.data(), Mx.data(), obj_tmp.data());
                     for (size_t j=0; j<DOF; j++){
                         if (fabs(Mx[j]) > 1e-6) {
@@ -357,22 +358,32 @@ int main() {
     
     Eigen::VectorXd pr(2*NPAR);
     Eigen::VectorXd gr(2*NPAR);
-    // pr(2) += 0.05;
-    // pr(5) += -0.05;
-    // double val = objective(pr.data(), gr.data());
-    // double h = 1e-4;
-    // for (int i=0; i<2*NPAR; i++) {
-    //     pr(i) += h;
-    //     double val1 = objective(pr.data(), NULL);
-    //     pr(i) -= 2*h;
-    //     double val2 = objective(pr.data(), NULL);
-    //     pr(i) += h;
-    //     double fd = (val1-val2)/(2*h);
-    //     printf("grad: %d %lg -- %lg => %lg\n", i, fd, gr(i), fd - gr(i));
-    // }
-    for (int k=0; k<30; k++) {
-        double val = objective(pr.data(), gr.data());
-        pr += -1e-3*gr;
+    pr(2) += 0.05;
+    pr(5) += -0.05;
+    double val = objective(pr.data(), gr.data());
+    double h = 1e-4;
+    for (int i=0; i<2*NPAR; i++) {
+        pr(i) += h;
+        double val1 = objective(pr.data(), NULL);
+        pr(i) -= 2*h;
+        double val2 = objective(pr.data(), NULL);
+        pr(i) += h;
+        double fd = (val1-val2)/(2*h);
+        printf("grad: %d %lg -- %lg => %lg\n", i, fd, gr(i), fd - gr(i));
     }
+    using obj_type = decltype(&objective);
+    nlopt_opt opt = nlopt_create(NLOPT_LD_LBFGS, NPAR);
+    nlopt_result opt_res;
+    opt_res = nlopt_set_min_objective(opt, 
+        [](unsigned n, const double* x, double* grad, void* f_data) -> double {
+            obj_type fun = (obj_type) f_data;
+            return (*fun)(x, grad);
+        }, (void*) &objective);
+    opt_res = nlopt_set_lower_bounds(opt, lower.data());
+    opt_res = nlopt_set_upper_bounds(opt, upper.data());
+    // for (int k=0; k<60; k++) {
+    //     double val = objective(pr.data(), gr.data());
+    //     pr += -1e-3*gr;
+    // }
     return 0;
 }
