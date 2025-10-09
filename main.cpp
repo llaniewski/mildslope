@@ -122,59 +122,33 @@ int main() {
     const size_t DOF = nP*DOFperP;
 
     const size_t NPAR_SIDE = 10;
-    const size_t NPAR = NPAR_SIDE;
-    Eigen::Matrix<double, Eigen::Dynamic, NPAR> par(nP,NPAR);
+    const size_t NPAR = NPAR_SIDE*2;
+    Eigen::Matrix<double, Eigen::Dynamic, NPAR> par(DOF,NPAR);
     if (true) {
-        const auto& fun = [](double x1, double y1, double x2, double y2) {
+        std::vector<double> nodes_x;
+        for (size_t i=0; i<NPAR_SIDE+2; i++) nodes_x.push_back(3+(7-3)*(i+1)/(NPAR_SIDE+1));
+        const auto& fun = [&nodes_x](size_t i, int sym, double x, double y) {
+            double x0 = nodes_x[i+0];
+            double x1 = nodes_x[i+1];
+            double x2 = nodes_x[i+2];
             double ret = 1;
-            if (x2 < 3) ret = 0;
-            else if (x2 < x1) ret = (x2 - 3)/(x1 - 3);
-            else if (x2 < 7) ret = (x2 - 7)/(x1 - 7);
+            if (x < x0) ret = 0;
+            else if (x < x1) ret = (x-x0)/(x1-x0);
+            else if (x < x2) ret = (x-x2)/(x1-x2);
             else ret = 0;
-            // if (y1 == 0.0) ret = ret * (1-y2) / (1-y1);
-            // else if (y1 == 1.0) ret = ret * (0 - y2) / (0-y1);
-            // else exit(3);
-            ret = ret * (y2-0.5)/(1-0.5);
-            double r = sqrt((5-x2)*(5-x2) + (0.5-y2)*(0.5-y2));
+            double r = sqrt((5-x)*(5-x) + (0.5-y)*(0.5-y));
             if (r < 0.3) ret = 0;
             else if (r < 0.5) ret = ret * (r-0.3)/(0.5-0.3);
             else ret = ret;
+            if (sym) ret = ret * (y-0.5)/(1-0.5);
             return ret;
         };
-        Eigen::Matrix<double, NPAR, 2> par_points(NPAR,2);
-        for (int i = 0; i<NPAR_SIDE; i++) {
-            par_points(i,0) = 3.0+(7.0-3.0)*(i+1)/(NPAR_SIDE+1);
-            par_points(i,1) = 0.0;
-            // par_points(i+NPAR_SIDE,0) = 3.0+(7.0-3.0)*(i+1)/(NPAR_SIDE+1);
-            // par_points(i+NPAR_SIDE,1) = 1.0;
-        }
-        std::cout << par_points << '\n';
-        Eigen::Matrix<double, NPAR, NPAR> par_cross(NPAR, NPAR);
-        for (int i = 0; i<NPAR; i++) {
-            for (int j = 0; j<NPAR; j++) {
-                par_cross(i,j) = fun(par_points(j,0),par_points(j,1),par_points(i,0),par_points(i,1));
-            }
-        }
-        // std::cout << par_cross << '\n';
-        // {
-        //     std::ofstream file("mat.txt");
-        //     file << par_cross << '\n';
-        // }
-        // {
-        //     std::ofstream file("inv.txt");
-        //     file << par_cross.inverse() << '\n';
-        // }
-        Eigen::Matrix<double, Eigen::Dynamic, NPAR> par_a(nP, NPAR);
         for (int i = 0; i<nP; i++) {
-            for (int j = 0; j<NPAR; j++) {
-                par_a(i,j) = fun(par_points(j,0),par_points(j,1),P(0,i),P(1,i));
+            for (int j = 0; j<NPAR_SIDE; j++) {
+                par(i*2+0,j*2+0) = fun(j,false,P(0,i),P(1,i));
+                par(i*2+1,j*2+1) = fun(j,true,P(0,i),P(1,i));
             }
         }
-        
-        par = par_a * par_cross.inverse();
-
-        // Eigen::Matrix<double, Eigen::Dynamic, NPAR> par_test = par_cross * par_cross.inverse();
-        // std::cout << par_test << '\n';
     }
 
     // Graph coloring
@@ -249,7 +223,7 @@ int main() {
     int iter = 0;
     const auto& objective = [&](const double *x_, double* grad_) -> double {
 
-        P = P0 + Eigen::Map< const Eigen::Matrix<double, 2, Eigen::Dynamic> >(x_, 2, NPAR) * par.transpose();
+        P = P0 + (par * Eigen::Map< const Eigen::VectorXd >(x_, NPAR)).reshaped(2,nP);
 
         Eigen::VectorXd x(DOF);
         Eigen::VectorXd res(DOF);
@@ -337,8 +311,8 @@ int main() {
             
             Eigen::VectorXd p_adj = Pb - dRdP.transpose() * x_adj;
 
-            Eigen::Map< Eigen::Matrix<double, 2, Eigen::Dynamic> > grad(grad_, 2, NPAR);
-            grad = p_adj.reshaped(2,nP) * par;
+            Eigen::Map< Eigen::VectorXd > grad(grad_, NPAR);
+            grad = p_adj.transpose() * par;
             std::cout << grad << "\n";
         }
 
@@ -350,19 +324,19 @@ int main() {
 //            std::make_tuple(std::string("Pb"), 2, to_span(Pb)),
 //            std::make_tuple(std::string("grad"), 2, to_span(p_adj)),
 //            std::make_tuple(std::string("res"), 2, to_span(res)),
-            std::make_tuple(std::string("par"), 1, std::span(par.col(0).data(),par.col(0).size()))
+            std::make_tuple(std::string("par"), 2, std::span(par.col(4).data(),par.col(4).size()))
         });
         iter++;
         return obj[0];
     };
     
-    Eigen::VectorXd pr(2*NPAR);
-    Eigen::VectorXd gr(2*NPAR);
+    Eigen::VectorXd pr(NPAR);
+    Eigen::VectorXd gr(NPAR);
     pr(2) += 0.05;
     pr(5) += -0.05;
     double val = objective(pr.data(), gr.data());
     double h = 1e-4;
-    for (int i=0; i<2*NPAR; i++) {
+    for (int i=0; i<NPAR; i++) {
         pr(i) += h;
         double val1 = objective(pr.data(), NULL);
         pr(i) -= 2*h;
@@ -379,8 +353,8 @@ int main() {
             obj_type fun = (obj_type) f_data;
             return (*fun)(x, grad);
         }, (void*) &objective);
-    opt_res = nlopt_set_lower_bounds(opt, lower.data());
-    opt_res = nlopt_set_upper_bounds(opt, upper.data());
+    // opt_res = nlopt_set_lower_bounds(opt, lower.data());
+    // opt_res = nlopt_set_upper_bounds(opt, upper.data());
     // for (int k=0; k<60; k++) {
     //     double val = objective(pr.data(), gr.data());
     //     pr += -1e-3*gr;
