@@ -121,7 +121,7 @@ int main() {
     const size_t DOFperP = 2;
     const size_t DOF = nP*DOFperP;
 
-    const size_t NPAR_SIDE = 10;
+    const size_t NPAR_SIDE = 60;
     const size_t NPAR = NPAR_SIDE*2;
     Eigen::Matrix<double, Eigen::Dynamic, NPAR> par(DOF,NPAR); par.setZero();
     if (true) {
