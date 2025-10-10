@@ -259,8 +259,9 @@ int main() {
 
         SpMat A(DOF,DOF);
         {
-            printf("Gathering Jacobian...\n");
+            printf("Gathering Jacobian");
             std::vector<Trip> coef;
+            printf(" [mult]");
             for (size_t k=0; k<maxk; k++) {
                 problem_dX(wave_k, P.data(), x.data(), ref_x.col(k).data(), res_tmp.data(), Mx.data(), obj_tmp.data());
                 for (size_t j=0; j<DOF; j++){
@@ -268,10 +269,11 @@ int main() {
                         coef.push_back(Trip(j,ref_j(j,k),Mx[j]));
                     }
                 }
-                printf("mult %ld -> %ld\n", k, coef.size());
+                //printf("mult %ld -> %ld\n", k, coef.size());
             }
-            printf("Constructing Jacobian from triplets\n");
+            printf(" [sparse]");
             A.setFromTriplets(coef.begin(), coef.end());
+            printf(" [done]\n");
         }
 
         {
@@ -310,8 +312,9 @@ int main() {
             
             SpMat dRdP(DOF,DOF);
             {
-                printf("Gathering dRdP...\n");
+                printf("Gathering dRdP");
                 std::vector<Trip> coef;
+                printf(" [mult]");
                 for (size_t k=0; k<maxk; k++) {
                     problem_dP(wave_k, P.data(), ref_x.col(k).data(), x.data(), res_tmp.data(), Mx.data(), obj_tmp.data());
                     for (size_t j=0; j<DOF; j++){
@@ -319,18 +322,14 @@ int main() {
                             coef.push_back(Trip(j,ref_j(j,k),Mx[j]));
                         }
                     }
-                    printf("mult %ld -> %ld\n", k, coef.size());
+                    //printf("mult %ld -> %ld\n", k, coef.size());
                 }
-                printf("Constructing B from triplets\n");
+                printf(" [sparse]");
                 dRdP.setFromTriplets(coef.begin(), coef.end());
+                printf(" [done]\n");
             }
-            std::cout << Pb << "\n";
-            std::cout << x_adj << "\n";
             Eigen::VectorXd p_adj = Pb - dRdP.transpose() * x_adj;
-            std::cout << p_adj << "\n";
-            
             Eigen::VectorXd grad = p_adj.transpose() * par;
-            std::cout << grad << "\n";
             Eigen::Map< Eigen::VectorXd >(grad_, NPAR) = grad;
         }
 

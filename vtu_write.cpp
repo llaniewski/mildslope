@@ -15,6 +15,7 @@ void write_vtu(char* filename, std::span<double> points, std::span<size_t> trian
         fprintf(stderr, "Wrong number of points or triangles\n");
         exit(-1);
     }
+    printf("Writing '%s'", filename);
     fprintf(f, "<VTKFile type=\"UnstructuredGrid\" version=\"1.0\" byte_order=\"LittleEndian\" header_type=\"UInt64\">\n");
     fprintf(f, "  <UnstructuredGrid>\n");
     fprintf(f, "    <Piece NumberOfPoints=\"%ld\" NumberOfCells=\"%ld\">\n", npoints, ncells);
@@ -23,11 +24,12 @@ void write_vtu(char* filename, std::span<double> points, std::span<size_t> trian
         const std::string name = std::get<0>(field);
         const int comp = std::get<1>(field);
         const std::span<double> vals = std::get<2>(field);
-        printf("Writing %s with %d components (%ld values)\n", name.c_str(), comp, vals.size());
+        //printf("Writing %s with %d components (%ld values)\n", name.c_str(), comp, vals.size());
         if (vals.size() != npoints*comp) {
             fprintf(stderr, "Wrong number of elements in field %s\n", name.c_str());
             exit(-1);
         }
+        printf(" [%s]", name.c_str());
         fprintf(f, "        <DataArray type=\"Float64\" Name=\"%s\" NumberOfComponents=\"%d\" format=\"ascii\">\n", name.c_str(), comp);
         for (size_t i=0; i<vals.size(); i++) {
             fprintf(f, " %.15lg", vals[i]);
@@ -39,6 +41,7 @@ void write_vtu(char* filename, std::span<double> points, std::span<size_t> trian
     fprintf(f, "      </PointData>\n");
     fprintf(f, "      <CellData>\n");
     fprintf(f, "      </CellData>\n");
+    printf(" [mesh]");
     fprintf(f, "      <Points>\n");
     fprintf(f, "        <DataArray type=\"Float64\" Name=\"Points\" NumberOfComponents=\"3\" format=\"ascii\">");
     for (size_t i=0; i<points.size(); i++) {
@@ -77,4 +80,5 @@ void write_vtu(char* filename, std::span<double> points, std::span<size_t> trian
     fprintf(f, "</VTKFile>\n");
     fprintf(f, "\n");
     fclose(f);
+    printf(" [done]\n");
 }
