@@ -13,6 +13,8 @@
 #include <fstream>
 #include <nlopt.h>
 
+const double pi = 4.0 * atan(1.0);
+
 size_t * triangles;
 size_t n_triangles;
 size_t n_points;
@@ -121,7 +123,7 @@ int main() {
     const size_t DOFperP = 2;
     const size_t DOF = nP*DOFperP;
 
-    const size_t NPAR_SIDE = 60;
+    const size_t NPAR_SIDE = 30;
     const size_t NPAR = NPAR_SIDE*2;
     Eigen::Matrix<double, Eigen::Dynamic, NPAR> par(DOF,NPAR); par.setZero();
     if (true) {
@@ -162,7 +164,7 @@ int main() {
                 std::span(par.col(j).data(),par.col(j).size())
             ));
         }
-        write_vtu("par.vtu", std::span(P.data(), P.size()), T, fields);
+        write_vtu("output/par.vtu", std::span(P.data(), P.size()), T, fields);
     }
 
     // Graph coloring
@@ -230,93 +232,58 @@ int main() {
     n_boundary = nB;
 
     // problem coefficient
-    double wave_k = 4.0;
-
+    //double wave_k = 4.0;
+    std::vector<std::pair<double, double>> k_integral;
+    const size_t KINT = 100;
+    const double wave_k_min = 0.01 * pi;
+    const double wave_k_max = 1 * pi;
+    {
+        double k_dist = (wave_k_max-wave_k_min)/(KINT - 1);
+        for (size_t i=0; i<KINT; i++) {
+            double weight = k_dist;
+            if ((i == 0) || (i == KINT-1)) weight = weight/2;
+            double wave_k = wave_k_min + i*k_dist;
+            k_integral.push_back(std::make_pair(weight, wave_k));
+        }
+    }
     Eigen::Matrix<double, 2, Eigen::Dynamic> P0 = P;
 
     int iter = 0;
-    const auto& objective = [&](const double *x_, double* grad_) -> double {
+    const auto& objective = [&](const double *pr_, double* grad_) -> double {
+        Eigen::Map< const Eigen::VectorXd > pr(pr_, NPAR);
+        P = P0 + (par * pr).reshaped(2,nP);
+        double total_obj = 0;
+        Eigen::Map< Eigen::VectorXd >total_grad(grad_, NPAR);
+        if (grad_ != NULL) total_grad.setZero();
+        std::vector<std::pair<double, double> > objs; 
+        for(size_t m = 0; m < KINT; m++) {
+            double weight = k_integral[m].first;
+            double wave_k = k_integral[m].second;
+            Eigen::VectorXd x(DOF); x.setZero();
+            Eigen::VectorXd res(DOF);
+            Eigen::VectorXd obj(1);
 
-        P = P0 + (par * Eigen::Map< const Eigen::VectorXd >(x_, NPAR)).reshaped(2,nP);
+            problem(wave_k, P.data(), x.data(), res.data(), obj.data());
+            //printf("obj:%lg\n", obj[0]);
 
-        Eigen::VectorXd x(DOF); x.setZero();
-        Eigen::VectorXd res(DOF);
-        Eigen::VectorXd obj(1);
-
-        problem(wave_k, P.data(), x.data(), res.data(), obj.data());
-        //printf("obj:%lg\n", obj[0]);
-
-        {
-            double resL2 = res.norm();
-            printf("Residual: %lg\n", resL2);
-        }
-        
-        Eigen::VectorXd Pd(DOF);
-        Eigen::VectorXd res_tmp(DOF);
-        Eigen::VectorXd obj_tmp(1);
-
-        Eigen::VectorXd Mx(DOF);
-
-        SpMat A(DOF,DOF);
-        {
-            printf("Gathering Jacobian");
-            std::vector<Trip> coef;
-            printf(" [mult]");
-            for (size_t k=0; k<maxk; k++) {
-                problem_dX(wave_k, P.data(), x.data(), ref_x.col(k).data(), res_tmp.data(), Mx.data(), obj_tmp.data());
-                for (size_t j=0; j<DOF; j++){
-                    if (fabs(Mx[j]) > 1e-6) {
-                        coef.push_back(Trip(j,ref_j(j,k),Mx[j]));
-                    }
-                }
-                //printf("mult %ld -> %ld\n", k, coef.size());
-            }
-            printf(" [sparse]");
-            A.setFromTriplets(coef.begin(), coef.end());
-            printf(" [done]\n");
-        }
-
-        {
-            printf("Solving linear problem");
-            Eigen::KLU<SpMat> solver;  // performs a Cholesky factorization of A
-            printf(" [compute]");
-            solver.compute(A); assert(solver.info() == Eigen::Success);
-            printf(" [solve]");
-            Eigen::VectorXd ret = solver.solve(res); assert(solver.info() == Eigen::Success);
-            printf(" [done]\n");
-            for (size_t i=0; i<ret.size(); i++) x[i] -= ret[i];
-        }
-
-        
-
-        problem(wave_k, P.data(), x.data(), res.data(), obj.data());
-        printf("obj:%lg\n", obj[0]);
-        // ADJOINT
-        if (grad_ != NULL) {
-            Eigen::VectorXd Pb(DOF); Pb.setZero();
-            Eigen::VectorXd xb(DOF); xb.setZero();
-            Eigen::VectorXd objb(1); objb.setZero();
-            objb[0] = 1;
-            problem_b(wave_k, P.data(), Pb.data(), x.data(), xb.data(), res_tmp.data(), obj_tmp.data(), objb.data());
-
-            Eigen::VectorXd x_adj;
-            {   
-                printf("Solving adjoint problem");
-                Eigen::KLU<SpMat> solver;  // performs a Cholesky factorization of A
-                printf(" [compute]");
-                solver.compute(A.transpose()); assert(solver.info() == Eigen::Success);
-                printf(" [solve]");
-                x_adj = solver.solve(xb); assert(solver.info() == Eigen::Success);
-                printf(" [done]\n");
+            {
+                double resL2 = res.norm();
+                printf("Residual: %lg\n", resL2);
             }
             
-            SpMat dRdP(DOF,DOF);
+            Eigen::VectorXd Pd(DOF);
+            Eigen::VectorXd res_tmp(DOF);
+            Eigen::VectorXd obj_tmp(1);
+
+            Eigen::VectorXd Mx(DOF);
+
+            SpMat A(DOF,DOF);
             {
-                printf("Gathering dRdP");
+                printf("Gathering Jacobian");
                 std::vector<Trip> coef;
                 printf(" [mult]");
                 for (size_t k=0; k<maxk; k++) {
-                    problem_dP(wave_k, P.data(), ref_x.col(k).data(), x.data(), res_tmp.data(), Mx.data(), obj_tmp.data());
+                    problem_dX(wave_k, P.data(), x.data(), ref_x.col(k).data(), res_tmp.data(), Mx.data(), obj_tmp.data());
                     for (size_t j=0; j<DOF; j++){
                         if (fabs(Mx[j]) > 1e-6) {
                             coef.push_back(Trip(j,ref_j(j,k),Mx[j]));
@@ -325,21 +292,89 @@ int main() {
                     //printf("mult %ld -> %ld\n", k, coef.size());
                 }
                 printf(" [sparse]");
-                dRdP.setFromTriplets(coef.begin(), coef.end());
+                A.setFromTriplets(coef.begin(), coef.end());
                 printf(" [done]\n");
             }
-            Eigen::VectorXd p_adj = Pb - dRdP.transpose() * x_adj;
-            Eigen::VectorXd grad = p_adj.transpose() * par;
-            Eigen::Map< Eigen::VectorXd >(grad_, NPAR) = grad;
-        }
 
-        char buf[1024];
-        sprintf(buf, "out_%04d.vtu", iter);
-        write_vtu(buf, std::span(P.data(), P.size()), T, {
-            std::make_tuple(std::string("Eta"), 2, to_span(x))
-        });
+            {
+                printf("Solving linear problem");
+                Eigen::KLU<SpMat> solver;  // performs a Cholesky factorization of A
+                printf(" [compute]");
+                solver.compute(A); assert(solver.info() == Eigen::Success);
+                printf(" [solve]");
+                Eigen::VectorXd ret = solver.solve(res); assert(solver.info() == Eigen::Success);
+                printf(" [done]\n");
+                for (size_t i=0; i<ret.size(); i++) x[i] -= ret[i];
+            }
+
+            
+
+            problem(wave_k, P.data(), x.data(), res.data(), obj.data());
+            printf("obj:%lg\n", obj[0]);
+            total_obj += obj[0]*weight;
+            objs.push_back(std::make_pair(wave_k, obj[0]));
+
+            // ADJOINT
+            if (grad_ != NULL) {
+                Eigen::VectorXd Pb(DOF); Pb.setZero();
+                Eigen::VectorXd xb(DOF); xb.setZero();
+                Eigen::VectorXd objb(1); objb.setZero();
+                objb[0] = 1;
+                problem_b(wave_k, P.data(), Pb.data(), x.data(), xb.data(), res_tmp.data(), obj_tmp.data(), objb.data());
+
+                Eigen::VectorXd x_adj;
+                {   
+                    printf("Solving adjoint problem");
+                    Eigen::KLU<SpMat> solver;  // performs a Cholesky factorization of A
+                    printf(" [compute]");
+                    solver.compute(A.transpose()); assert(solver.info() == Eigen::Success);
+                    printf(" [solve]");
+                    x_adj = solver.solve(xb); assert(solver.info() == Eigen::Success);
+                    printf(" [done]\n");
+                }
+                
+                SpMat dRdP(DOF,DOF);
+                {
+                    printf("Gathering dRdP");
+                    std::vector<Trip> coef;
+                    printf(" [mult]");
+                    for (size_t k=0; k<maxk; k++) {
+                        problem_dP(wave_k, P.data(), ref_x.col(k).data(), x.data(), res_tmp.data(), Mx.data(), obj_tmp.data());
+                        for (size_t j=0; j<DOF; j++){
+                            if (fabs(Mx[j]) > 1e-6) {
+                                coef.push_back(Trip(j,ref_j(j,k),Mx[j]));
+                            }
+                        }
+                        //printf("mult %ld -> %ld\n", k, coef.size());
+                    }
+                    printf(" [sparse]");
+                    dRdP.setFromTriplets(coef.begin(), coef.end());
+                    printf(" [done]\n");
+                }
+                Eigen::VectorXd p_adj = Pb - dRdP.transpose() * x_adj;
+                Eigen::VectorXd grad = p_adj.transpose() * par;
+                total_grad += grad * weight;
+            }
+            {
+                char buf[1024];
+                sprintf(buf, "output/res_%lg_%04d.vtu", wave_k, iter);
+                write_vtu(buf, std::span(P.data(), P.size()), T, {
+                    std::make_tuple(std::string("Eta"), 2, to_span(x))
+                });
+            }
+        }
+        {
+            char buf[1024];
+            sprintf(buf, "output/res_%04d.csv", iter);
+            FILE* f = fopen(buf, "w");
+            fprintf(f, "wave_k,obj\n");
+            for (size_t i=0;i<objs.size();i++) {
+                fprintf(f, "%.15lg, %.15lg\n", objs[i].first, objs[i].second);
+            }
+            fclose(f);
+        }
         iter++;
-        return obj[0];
+        return total_obj;
     };
     
     // {
@@ -358,9 +393,11 @@ int main() {
     //         double fd = (val1-val2)/(2*h);
     //         printf("grad: %d %lg -- %lg => %lg\n", i, fd, gr(i), fd - gr(i));
     //     }
+    //     return 0;
     // }
+
     using obj_type = decltype(&objective);
-    nlopt_opt opt = nlopt_create(NLOPT_LD_LBFGS, NPAR);
+    nlopt_opt opt = nlopt_create(NLOPT_LD_MMA, NPAR);
     nlopt_result opt_res;
     opt_res = nlopt_set_min_objective(opt, 
         [](unsigned n, const double* x, double* grad, void* f_data) -> double {
@@ -372,8 +409,8 @@ int main() {
     for (size_t i=0;i<NPAR_SIDE; i++) {
         lower(i*2+0) = -0.1;
         upper(i*2+0) = 0.1;
-        lower(i*2+1) = -0.2;
-        upper(i*2+1) = 0.1;
+        lower(i*2+1) = -0.3;
+        upper(i*2+1) = 1;
     }
     opt_res = nlopt_set_lower_bounds(opt, lower.data());
     opt_res = nlopt_set_upper_bounds(opt, upper.data());
