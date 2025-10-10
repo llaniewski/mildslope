@@ -342,21 +342,23 @@ int main() {
         return obj[0];
     };
     
-    Eigen::VectorXd pr(NPAR); pr.setZero();
-    Eigen::VectorXd gr(NPAR);
-    pr(2) += 0.05;
-    pr(5) += -0.05;
-    double val = objective(pr.data(), gr.data());
-    double h = 1e-4;
-    for (int i=0; i<NPAR; i++) {
-        pr(i) += h;
-        double val1 = objective(pr.data(), NULL);
-        pr(i) -= 2*h;
-        double val2 = objective(pr.data(), NULL);
-        pr(i) += h;
-        double fd = (val1-val2)/(2*h);
-        printf("grad: %d %lg -- %lg => %lg\n", i, fd, gr(i), fd - gr(i));
-    }
+    // {
+    //     Eigen::VectorXd pr(NPAR); pr.setZero();
+    //     Eigen::VectorXd gr(NPAR);
+    //     pr(2) += 0.05;
+    //     pr(5) += -0.05;
+    //     double val = objective(pr.data(), gr.data());
+    //     double h = 1e-4;
+    //     for (int i=0; i<NPAR; i++) {
+    //         pr(i) += h;
+    //         double val1 = objective(pr.data(), NULL);
+    //         pr(i) -= 2*h;
+    //         double val2 = objective(pr.data(), NULL);
+    //         pr(i) += h;
+    //         double fd = (val1-val2)/(2*h);
+    //         printf("grad: %d %lg -- %lg => %lg\n", i, fd, gr(i), fd - gr(i));
+    //     }
+    // }
     using obj_type = decltype(&objective);
     nlopt_opt opt = nlopt_create(NLOPT_LD_LBFGS, NPAR);
     nlopt_result opt_res;
@@ -365,8 +367,23 @@ int main() {
             obj_type fun = (obj_type) f_data;
             return (*fun)(x, grad);
         }, (void*) &objective);
-    // opt_res = nlopt_set_lower_bounds(opt, lower.data());
-    // opt_res = nlopt_set_upper_bounds(opt, upper.data());
+    Eigen::VectorXd lower(NPAR);
+    Eigen::VectorXd upper(NPAR);
+    for (size_t i=0;i<NPAR_SIDE; i++) {
+        lower(i*2+0) = -0.1;
+        upper(i*2+0) = 0.1;
+        lower(i*2+1) = -0.2;
+        upper(i*2+1) = 0.1;
+    }
+    opt_res = nlopt_set_lower_bounds(opt, lower.data());
+    opt_res = nlopt_set_upper_bounds(opt, upper.data());
+    opt_res = nlopt_set_maxeval(opt, 100);
+
+    Eigen::VectorXd pr(NPAR); pr.setZero();
+    double obj;
+    opt_res = nlopt_optimize(opt, pr.data(), &obj);
+    std::cout << pr << "\n";
+    printf("Objective: %lg\n", obj);
     // for (int k=0; k<60; k++) {
     //     double val = objective(pr.data(), gr.data());
     //     pr += -1e-3*gr;
