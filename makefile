@@ -1,5 +1,8 @@
-CXXFLAGS+=-O3 -I/usr/include/eigen3/ -I/usr/include/suitesparse/ -std=c++20
+CXXFLAGS+=-I/usr/include/eigen3/ -I/usr/include/suitesparse/ -std=c++20
+CXXFLAGS+=-O3
 CFLAGS+=-O3
+# CXXFLAGS+=-g
+# CFLAGS+=-g
 TAPENADE=$(HOME)/tapenade/tapenade_3.16/bin/tapenade
 
 main: main.o vtu_write.o solve.o problem.o problem_d.o problem_b.o

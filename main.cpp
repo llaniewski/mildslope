@@ -123,10 +123,10 @@ int main() {
 
     const size_t NPAR_SIDE = 10;
     const size_t NPAR = NPAR_SIDE*2;
-    Eigen::Matrix<double, Eigen::Dynamic, NPAR> par(DOF,NPAR);
+    Eigen::Matrix<double, Eigen::Dynamic, NPAR> par(DOF,NPAR); par.setZero();
     if (true) {
         std::vector<double> nodes_x;
-        for (size_t i=0; i<NPAR_SIDE+2; i++) nodes_x.push_back(3+(7-3)*(i+1)/(NPAR_SIDE+1));
+        for (size_t i=0; i<NPAR_SIDE+2; i++) nodes_x.push_back(3.0+(7.0-3.0)*(i)/(NPAR_SIDE+1));
         const auto& fun = [&nodes_x](size_t i, int sym, double x, double y) {
             double x0 = nodes_x[i+0];
             double x1 = nodes_x[i+1];
@@ -151,14 +151,28 @@ int main() {
         }
     }
 
+    {
+        std::vector<std::tuple<std::string, int, std::span<double> > >fields;
+        for (int j = 0; j<NPAR; j++) {
+            char buf[1024];
+            sprintf(buf, "par_%02d", j);
+            fields.push_back(std::make_tuple(
+                std::string(buf),
+                2,
+                std::span(par.col(j).data(),par.col(j).size())
+            ));
+        }
+        write_vtu("par.vtu", std::span(P.data(), P.size()), T, fields);
+    }
+
     // Graph coloring
     const size_t W = 40;
     const size_t NA = -1;
     int maxk = 0;
-    Eigen::Matrix<size_t, Eigen::Dynamic, W> ref_j(DOF,W);
-    Eigen::Matrix<double, Eigen::Dynamic, W> ref_x(DOF,W);
+    Eigen::Matrix<size_t, Eigen::Dynamic, W> ref_j(DOF,W); ref_j.setZero();
+    Eigen::Matrix<double, Eigen::Dynamic, W> ref_x(DOF,W); ref_x.setZero();
     {
-        Eigen::Matrix<bool, Eigen::Dynamic, W> ref_b(DOF,W);
+        Eigen::Matrix<bool, Eigen::Dynamic, W> ref_b(DOF,W); ref_b.setZero();
         printf("construct graph\n");
         std::vector<std::set<size_t>> graph(DOF);
         for (size_t i=0;i<nT;i++) {
@@ -225,15 +239,17 @@ int main() {
 
         P = P0 + (par * Eigen::Map< const Eigen::VectorXd >(x_, NPAR)).reshaped(2,nP);
 
-        Eigen::VectorXd x(DOF);
+        Eigen::VectorXd x(DOF); x.setZero();
         Eigen::VectorXd res(DOF);
         Eigen::VectorXd obj(1);
 
         problem(wave_k, P.data(), x.data(), res.data(), obj.data());
         //printf("obj:%lg\n", obj[0]);
 
-        double resL2 = res.norm();
-        printf("Residual: %lg\n", resL2);
+        {
+            double resL2 = res.norm();
+            printf("Residual: %lg\n", resL2);
+        }
         
         Eigen::VectorXd Pd(DOF);
         Eigen::VectorXd res_tmp(DOF);
@@ -275,9 +291,9 @@ int main() {
         printf("obj:%lg\n", obj[0]);
         // ADJOINT
         if (grad_ != NULL) {
-            Eigen::VectorXd Pb(DOF);
-            Eigen::VectorXd xb(DOF);
-            Eigen::VectorXd objb(1);
+            Eigen::VectorXd Pb(DOF); Pb.setZero();
+            Eigen::VectorXd xb(DOF); xb.setZero();
+            Eigen::VectorXd objb(1); objb.setZero();
             objb[0] = 1;
             problem_b(wave_k, P.data(), Pb.data(), x.data(), xb.data(), res_tmp.data(), obj_tmp.data(), objb.data());
 
@@ -308,29 +324,26 @@ int main() {
                 printf("Constructing B from triplets\n");
                 dRdP.setFromTriplets(coef.begin(), coef.end());
             }
-            
+            std::cout << Pb << "\n";
+            std::cout << x_adj << "\n";
             Eigen::VectorXd p_adj = Pb - dRdP.transpose() * x_adj;
-
-            Eigen::Map< Eigen::VectorXd > grad(grad_, NPAR);
-            grad = p_adj.transpose() * par;
+            std::cout << p_adj << "\n";
+            
+            Eigen::VectorXd grad = p_adj.transpose() * par;
             std::cout << grad << "\n";
+            Eigen::Map< Eigen::VectorXd >(grad_, NPAR) = grad;
         }
 
         char buf[1024];
         sprintf(buf, "out_%04d.vtu", iter);
         write_vtu(buf, std::span(P.data(), P.size()), T, {
-            std::make_tuple(std::string("Eta"), 2, to_span(x)),
-//            std::make_tuple(std::string("Eta_adj"), 2, to_span(x_adj)),
-//            std::make_tuple(std::string("Pb"), 2, to_span(Pb)),
-//            std::make_tuple(std::string("grad"), 2, to_span(p_adj)),
-//            std::make_tuple(std::string("res"), 2, to_span(res)),
-            std::make_tuple(std::string("par"), 2, std::span(par.col(4).data(),par.col(4).size()))
+            std::make_tuple(std::string("Eta"), 2, to_span(x))
         });
         iter++;
         return obj[0];
     };
     
-    Eigen::VectorXd pr(NPAR);
+    Eigen::VectorXd pr(NPAR); pr.setZero();
     Eigen::VectorXd gr(NPAR);
     pr(2) += 0.05;
     pr(5) += -0.05;
