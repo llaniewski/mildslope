@@ -355,7 +355,7 @@ int main() {
                 Eigen::VectorXd grad = p_adj.transpose() * par;
                 total_grad += grad * weight;
             }
-            {
+            if (m % 10 == 0) {
                 char buf[1024];
                 sprintf(buf, "output/res_%lg_%04d.vtu", wave_k, iter);
                 write_vtu(buf, std::span(P.data(), P.size()), T, {
@@ -397,7 +397,7 @@ int main() {
     // }
 
     using obj_type = decltype(&objective);
-    nlopt_opt opt = nlopt_create(NLOPT_LD_MMA, NPAR);
+    nlopt_opt opt = nlopt_create(NLOPT_LD_LBFGS, NPAR);
     nlopt_result opt_res;
     opt_res = nlopt_set_min_objective(opt, 
         [](unsigned n, const double* x, double* grad, void* f_data) -> double {
@@ -409,12 +409,12 @@ int main() {
     for (size_t i=0;i<NPAR_SIDE; i++) {
         lower(i*2+0) = -0.1;
         upper(i*2+0) = 0.1;
-        lower(i*2+1) = -0.3;
+        lower(i*2+1) = -0.2;
         upper(i*2+1) = 1;
     }
     opt_res = nlopt_set_lower_bounds(opt, lower.data());
     opt_res = nlopt_set_upper_bounds(opt, upper.data());
-    opt_res = nlopt_set_maxeval(opt, 100);
+    opt_res = nlopt_set_maxeval(opt, 500);
 
     Eigen::VectorXd pr(NPAR); pr.setZero();
     double obj;
