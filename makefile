@@ -1,6 +1,6 @@
 CXXFLAGS+=-I/usr/include/eigen3/ -I/usr/include/suitesparse/ -std=c++20
-CXXFLAGS+=-O3
-CFLAGS+=-O3
+CXXFLAGS+=-O3 -fopenmp
+CFLAGS+=-O3 -fopenmp
 # CXXFLAGS+=-g
 # CFLAGS+=-g
 TAPENADE=$(HOME)/tapenade/tapenade_3.16/bin/tapenade

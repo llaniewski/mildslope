@@ -124,12 +124,12 @@ int main() {
     const size_t DOF = nP*DOFperP;
 
     const size_t NPAR_SIDE = 30;
-    const size_t NPAR = NPAR_SIDE*2;
+    const size_t NPAR = NPAR_SIDE*4;
     Eigen::Matrix<double, Eigen::Dynamic, NPAR> par(DOF,NPAR); par.setZero();
     if (true) {
         std::vector<double> nodes_x;
         for (size_t i=0; i<NPAR_SIDE+2; i++) nodes_x.push_back(3.0+(7.0-3.0)*(i)/(NPAR_SIDE+1));
-        const auto& fun = [&nodes_x](size_t i, int sym, double x, double y) {
+        const auto& fun = [&nodes_x](size_t i, int side, double x, double y) {
             double x0 = nodes_x[i+0];
             double x1 = nodes_x[i+1];
             double x2 = nodes_x[i+2];
@@ -142,13 +142,16 @@ int main() {
             if (r < 0.3) ret = 0;
             else if (r < 0.5) ret = ret * (r-0.3)/(0.5-0.3);
             else ret = ret;
-            if (sym) ret = ret * (y-0.5)/(1-0.5);
+            if (side) ret = ret * (y-1.0) / (0.0-1.0);
+            else ret = ret * (y-0.0) / (1.0-0.0);
             return ret;
         };
-        for (int i = 0; i<nP; i++) {
-            for (int j = 0; j<NPAR_SIDE; j++) {
-                par(i*2+0,j*2+0) = fun(j,false,P(0,i),P(1,i));
-                par(i*2+1,j*2+1) = fun(j,true,P(0,i),P(1,i));
+        for (int j = 0; j<NPAR_SIDE; j++) {
+            for (int i = 0; i<nP; i++) {
+                par(i*2+0,j*4+0) = fun(j,true,P(0,i),P(1,i));
+                par(i*2+1,j*4+1) = -fun(j,true,P(0,i),P(1,i));
+                par(i*2+0,j*4+2) = fun(j,false,P(0,i),P(1,i));
+                par(i*2+1,j*4+3) = fun(j,false,P(0,i),P(1,i));
             }
         }
     }
@@ -407,10 +410,14 @@ int main() {
     Eigen::VectorXd lower(NPAR);
     Eigen::VectorXd upper(NPAR);
     for (size_t i=0;i<NPAR_SIDE; i++) {
-        lower(i*2+0) = -0.1;
-        upper(i*2+0) = 0.1;
-        lower(i*2+1) = -0.2;
-        upper(i*2+1) = 1;
+        lower(i*4+0) = -0.1;
+        upper(i*4+0) = 0.1;
+        lower(i*4+1) = -0.2;
+        upper(i*4+1) = 1;
+        lower(i*4+2) = -0.1;
+        upper(i*4+2) = 0.1;
+        lower(i*4+3) = -0.2;
+        upper(i*4+3) = 1;
     }
     opt_res = nlopt_set_lower_bounds(opt, lower.data());
     opt_res = nlopt_set_upper_bounds(opt, upper.data());
