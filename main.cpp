@@ -123,8 +123,9 @@ int main() {
     const size_t DOFperP = 2;
     const size_t DOF = nP*DOFperP;
 
-    const size_t NPAR_SIDE = 30;
-    const size_t NPAR = NPAR_SIDE*4;
+    const size_t NPAR_SIDE = 60;
+    const size_t NPAR_PER_NODE = 1;
+    const size_t NPAR = NPAR_SIDE*NPAR_PER_NODE;
     Eigen::Matrix<double, Eigen::Dynamic, NPAR> par(DOF,NPAR); par.setZero();
     if (true) {
         std::vector<double> nodes_x;
@@ -148,10 +149,11 @@ int main() {
         };
         for (int j = 0; j<NPAR_SIDE; j++) {
             for (int i = 0; i<nP; i++) {
-                par(i*2+0,j*4+0) = fun(j,true,P(0,i),P(1,i));
-                par(i*2+1,j*4+1) = -fun(j,true,P(0,i),P(1,i));
-                par(i*2+0,j*4+2) = fun(j,false,P(0,i),P(1,i));
-                par(i*2+1,j*4+3) = fun(j,false,P(0,i),P(1,i));
+                par(i*2+1,j*NPAR_PER_NODE+0) = - fun(j,true,P(0,i),P(1,i)) + fun(j,false,P(0,i),P(1,i));
+                // par(i*2+0,j*NPAR_PER_NODE+0) = fun(j,true,P(0,i),P(1,i));
+                // par(i*2+1,j*NPAR_PER_NODE+1) = -fun(j,true,P(0,i),P(1,i));
+                // par(i*2+0,j*NPAR_PER_NODE+2) = fun(j,false,P(0,i),P(1,i));
+                // par(i*2+1,j*NPAR_PER_NODE+3) = fun(j,false,P(0,i),P(1,i));
             }
         }
     }
@@ -410,14 +412,16 @@ int main() {
     Eigen::VectorXd lower(NPAR);
     Eigen::VectorXd upper(NPAR);
     for (size_t i=0;i<NPAR_SIDE; i++) {
-        lower(i*4+0) = -0.1;
-        upper(i*4+0) = 0.1;
-        lower(i*4+1) = -0.2;
-        upper(i*4+1) = 1;
-        lower(i*4+2) = -0.1;
-        upper(i*4+2) = 0.1;
-        lower(i*4+3) = -0.2;
-        upper(i*4+3) = 1;
+        lower(i*NPAR_PER_NODE+0) = -0.2;
+        upper(i*NPAR_PER_NODE+0) =  1.0;
+        // lower(i*NPAR_PER_NODE+0) = -0.01;
+    //     upper(i*NPAR_PER_NODE+0) = 0.01;
+    //     lower(i*NPAR_PER_NODE+1) = -0.2;
+    //     upper(i*NPAR_PER_NODE+1) = 1;
+    //     lower(i*NPAR_PER_NODE+2) = -0.01;
+    //     upper(i*NPAR_PER_NODE+2) = 0.01;
+    //     lower(i*NPAR_PER_NODE+3) = -0.2;
+    //     upper(i*NPAR_PER_NODE+3) = 1;
     }
     opt_res = nlopt_set_lower_bounds(opt, lower.data());
     opt_res = nlopt_set_upper_bounds(opt, upper.data());
