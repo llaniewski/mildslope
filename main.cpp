@@ -23,10 +23,9 @@ int * boundary_flag;
 size_t n_boundary;
 extern "C" {
     void problem(double wave_k, const double *points, const double* x, double* res, double* obj);
-    void problem_d(double wave_k, const double *points, const double *pointsd, const double *x, const double *xd, double *res, double *resd, double *obj);
-    void problem_dP(double wave_k, const double *points, const double *pointsd, const double *x, double *res, double *resd, double *obj);
-    void problem_dX(double wave_k, const double *points, const double *x, const double *xd, double *res, double *resd, double *obj);
-    void problem_b(double wave_k, const double *points, double *pointsb, const double *x, double *xb, double *res, double *obj, const double *objb);
+    void problem_d(double wave_k, const double *points, const double *x, const double *xd, double *res, double *resd, double *obj);
+    void problem_bP(double wave_k, const double *points, double *pointsb, const double *x, double *res, double *resb, double *obj, double *objb);
+    void problem_bX(double wave_k, const double *points, const double *x, double *xb, double *res, double *obj, double *objb);
 }
 
 typedef Eigen::SparseMatrix<double> SpMat;
@@ -288,7 +287,7 @@ int main() {
                 std::vector<Trip> coef;
                 printf(" [mult]");
                 for (size_t k=0; k<maxk; k++) {
-                    problem_dX(wave_k, P.data(), x.data(), ref_x.col(k).data(), res_tmp.data(), Mx.data(), obj_tmp.data());
+                    problem_d(wave_k, P.data(), x.data(), ref_x.col(k).data(), res_tmp.data(), Mx.data(), obj_tmp.data());
                     for (size_t j=0; j<DOF; j++){
                         if (fabs(Mx[j]) > 1e-6) {
                             coef.push_back(Trip(j,ref_j(j,k),Mx[j]));
@@ -325,39 +324,22 @@ int main() {
                 Eigen::VectorXd xb(DOF); xb.setZero();
                 Eigen::VectorXd objb(1); objb.setZero();
                 objb[0] = 1;
-                problem_b(wave_k, P.data(), Pb.data(), x.data(), xb.data(), res_tmp.data(), obj_tmp.data(), objb.data());
+                problem_bX(wave_k, P.data(), x.data(), xb.data(), res_tmp.data(), obj_tmp.data(), objb.data());
 
-                Eigen::VectorXd x_adj;
+                Eigen::VectorXd resb;
                 {   
                     printf("Solving adjoint problem");
                     Eigen::KLU<SpMat> solver;  // performs a Cholesky factorization of A
                     printf(" [compute]");
                     solver.compute(A.transpose()); assert(solver.info() == Eigen::Success);
                     printf(" [solve]");
-                    x_adj = solver.solve(xb); assert(solver.info() == Eigen::Success);
+                    resb = solver.solve(xb); assert(solver.info() == Eigen::Success);
                     printf(" [done]\n");
                 }
                 
-                SpMat dRdP(DOF,DOF);
-                {
-                    printf("Gathering dRdP");
-                    std::vector<Trip> coef;
-                    printf(" [mult]");
-                    for (size_t k=0; k<maxk; k++) {
-                        problem_dP(wave_k, P.data(), ref_x.col(k).data(), x.data(), res_tmp.data(), Mx.data(), obj_tmp.data());
-                        for (size_t j=0; j<DOF; j++){
-                            if (fabs(Mx[j]) > 1e-6) {
-                                coef.push_back(Trip(j,ref_j(j,k),Mx[j]));
-                            }
-                        }
-                        //printf("mult %ld -> %ld\n", k, coef.size());
-                    }
-                    printf(" [sparse]");
-                    dRdP.setFromTriplets(coef.begin(), coef.end());
-                    printf(" [done]\n");
-                }
-                Eigen::VectorXd p_adj = Pb - dRdP.transpose() * x_adj;
-                Eigen::VectorXd grad = p_adj.transpose() * par;
+                problem_bP(wave_k, P.data(), Pb.data(), x.data(), res_tmp.data(), resb.data(), obj_tmp.data(), objb.data());
+
+                Eigen::VectorXd grad = Pb.transpose() * par;
                 total_grad += grad * weight;
             }
             if (m % 10 == 0) {

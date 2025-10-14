@@ -31,7 +31,7 @@ void problem(double wave_k, const double *points, const double* x, double* res, 
         double wx = x2-x0;
         double wy = y2-y0;
         double det = wx*vy-wy*vx;
-        double area = fabs(det)/2;
+        double area = det;
         //vx*gx1+vy*gy1 = 1
         //wx*gx1+wy*gy1 = 0
         //gx1 = -wy*gy1/wx
