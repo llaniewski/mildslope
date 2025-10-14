@@ -378,6 +378,24 @@ int main() {
             }
             fclose(f);
         }
+        // {
+        //     char buf[1024];
+        //     sprintf(buf, "output/res_%04d.points", iter);
+        //     FILE* f = fopen(buf, "w");
+        //     for (size_t i=0;i<nP;i++) {
+        //         fprintf(f, "%.15lg %.15lg\n", P(0,i), P(1,i));
+        //     }
+        //     fclose(f);
+        // }
+        // {
+        //     char buf[1024];
+        //     sprintf(buf, "output/mesh_%04d.triangles", iter);
+        //     FILE* f = fopen(buf, "w");
+        //     for (size_t i=0;i<nT;i++) {
+        //         fprintf(f, "%ld %ld %ld\n", T[3*i+0], T[3*i+1], T[3*i+2]);
+        //     }
+        //     fclose(f);
+        // }
         iter++;
         return total_obj;
     };
