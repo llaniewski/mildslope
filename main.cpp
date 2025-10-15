@@ -122,7 +122,7 @@ int main() {
     const size_t DOFperP = 2;
     const size_t DOF = nP*DOFperP;
 
-    const size_t NPAR_SIDE = 60;
+    const size_t NPAR_SIDE = 0;
     const size_t NPAR_PER_NODE = 1;
     const size_t NPAR_SHAPE = NPAR_SIDE*NPAR_PER_NODE;
     Eigen::Matrix<double, Eigen::Dynamic, NPAR_SHAPE> par_shape(DOF,NPAR_SHAPE); par_shape.setZero();
@@ -282,7 +282,8 @@ int main() {
     const auto& objective = [&](const double *pr_, double* grad_, bool export_all=false) -> double {
         Eigen::Map< const Eigen::VectorXd > pr_shape(pr_, NPAR_SHAPE);
         Eigen::Map< const Eigen::VectorXd > pr_depth(pr_ + NPAR_SHAPE, NPAR_DEPTH);
-        P = P0 + (par_shape * pr_shape).reshaped(2,nP);
+        //P = P0 + (par_shape * pr_shape).reshaped(2,nP);
+        P = P0;
         Eigen::VectorXd D = D0 + par_depth * pr_depth;
         double total_obj = 0;
         Eigen::Map< Eigen::VectorXd >total_grad_shape(grad_, NPAR_SHAPE);
@@ -376,8 +377,8 @@ int main() {
                 
                 problem_bP(wave_k, P.data(), Pb.data(), D.data(), Db.data(), x.data(), res_tmp.data(), resb.data(), obj_tmp.data(), objb.data());
 
-                Eigen::VectorXd grad_shape = Pb.transpose() * par_shape;
-                total_grad_shape += grad_shape * weight;
+                // Eigen::VectorXd grad_shape = Pb.transpose() * par_shape;
+                // total_grad_shape += grad_shape * weight;
                 Eigen::VectorXd grad_depth = Db.transpose() * par_depth;
                 total_grad_depth += grad_depth * weight;
             }
@@ -447,8 +448,8 @@ int main() {
     //     upper(i*NPAR_PER_NODE+3) = 1;
     }
     for (size_t i=0;i<NPAR_DEPTH; i++) {
-        lower(i + NPAR_SHAPE) = -0.2;
-        upper(i + NPAR_SHAPE) =  0.2;
+        lower(i + NPAR_SHAPE) = -0.5;
+        upper(i + NPAR_SHAPE) =  2;
     }
 
     opt_res = nlopt_set_lower_bounds(opt, lower.data());
