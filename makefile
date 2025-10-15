@@ -12,6 +12,6 @@ problem_d.c : problem.c
 	$(TAPENADE) -fixinterface -d -head 'problem(res)/(x)' $<
 
 problem_b.c : problem.c
-	$(TAPENADE) -fixinterface -b -head 'problem[X](obj)/(x)' -head 'problem[P](res,obj)/(points)' $<
+	$(TAPENADE) -fixinterface -b -head 'problem[X](obj)/(x)' -head 'problem[P](res,obj)/(points,depth)' $<
 	sed -e '/adStack/s|^|//|' -i $@
 	./ADmod.R -f $@ -o $@

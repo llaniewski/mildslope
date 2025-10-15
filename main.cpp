@@ -22,10 +22,10 @@ size_t * boundary;
 int * boundary_flag;
 size_t n_boundary;
 extern "C" {
-    void problem(double wave_k, const double *points, const double* x, double* res, double* obj);
-    void problem_d(double wave_k, const double *points, const double *x, const double *xd, double *res, double *resd, double *obj);
-    void problem_bP(double wave_k, const double *points, double *pointsb, const double *x, double *res, double *resb, double *obj, double *objb);
-    void problem_bX(double wave_k, const double *points, const double *x, double *xb, double *res, double *obj, double *objb);
+    void problem(double wave_k, const double *points, const double *depth, const double* x, double* res, double* obj);
+    void problem_d(double wave_k, const double *points, const double *depth, const double *x, const double *xd, double *res, double *resd, double *obj);
+    void problem_bP(double wave_k, const double *points, double *pointsb, const double *depth, const double *depthb, const double *x, double *res, double *resb, double *obj, double *objb);
+    void problem_bX(double wave_k, const double *points, const double *depth, const double *x, double *xb, double *res, double *obj, double *objb);
 }
 
 typedef Eigen::SparseMatrix<double> SpMat;
@@ -124,8 +124,8 @@ int main() {
 
     const size_t NPAR_SIDE = 60;
     const size_t NPAR_PER_NODE = 1;
-    const size_t NPAR = NPAR_SIDE*NPAR_PER_NODE;
-    Eigen::Matrix<double, Eigen::Dynamic, NPAR> par(DOF,NPAR); par.setZero();
+    const size_t NPAR_SHAPE = NPAR_SIDE*NPAR_PER_NODE;
+    Eigen::Matrix<double, Eigen::Dynamic, NPAR_SHAPE> par_shape(DOF,NPAR_SHAPE); par_shape.setZero();
     if (true) {
         std::vector<double> nodes_x;
         for (size_t i=0; i<NPAR_SIDE+2; i++) nodes_x.push_back(3.0+(7.0-3.0)*(i)/(NPAR_SIDE+1));
@@ -148,7 +148,7 @@ int main() {
         };
         for (int j = 0; j<NPAR_SIDE; j++) {
             for (int i = 0; i<nP; i++) {
-                par(i*2+1,j*NPAR_PER_NODE+0) = - fun(j,true,P(0,i),P(1,i)) + fun(j,false,P(0,i),P(1,i));
+                par_shape(i*2+1,j*NPAR_PER_NODE+0) = - fun(j,true,P(0,i),P(1,i)) + fun(j,false,P(0,i),P(1,i));
                 // par(i*2+0,j*NPAR_PER_NODE+0) = fun(j,true,P(0,i),P(1,i));
                 // par(i*2+1,j*NPAR_PER_NODE+1) = -fun(j,true,P(0,i),P(1,i));
                 // par(i*2+0,j*NPAR_PER_NODE+2) = fun(j,false,P(0,i),P(1,i));
@@ -159,17 +159,41 @@ int main() {
 
     {
         std::vector<std::tuple<std::string, int, std::span<double> > >fields;
-        for (int j = 0; j<NPAR; j++) {
+        for (int j = 0; j<NPAR_SHAPE; j++) {
             char buf[1024];
             sprintf(buf, "par_%02d", j);
             fields.push_back(std::make_tuple(
                 std::string(buf),
                 2,
-                std::span(par.col(j).data(),par.col(j).size())
+                std::span(par_shape.col(j).data(),par_shape.col(j).size())
             ));
         }
         write_vtu("output/par.vtu", std::span(P.data(), P.size()), T, fields);
     }
+
+    size_t NPAR_DEPTH=0;
+    SpMat par_depth;
+    {
+        size_t npar=0;
+        std::vector<Trip> coef;
+        for (size_t i=0;i<nT;i++) {
+            double x = 0;
+            for(int j=0; j<3; j++) {
+                size_t idx = T[i*3+j];
+                x += P(0,idx);
+            }
+            x = x / 3;
+            if ((3<x) && (x<7)) {
+                coef.push_back(Trip(i,npar,1));
+                npar++;
+            }
+        }
+        NPAR_DEPTH = npar;
+        printf("depth parameters: %ld (coef.size: %ld)\n", NPAR_DEPTH, coef.size());
+        par_depth.resize(nT,NPAR_DEPTH);
+        par_depth.setFromTriplets(coef.begin(), coef.end());
+    }
+    size_t NPAR = NPAR_SHAPE + NPAR_DEPTH;
 
     // Graph coloring
     const size_t W = 40;
@@ -238,7 +262,7 @@ int main() {
     // problem coefficient
     //double wave_k = 4.0;
     std::vector<std::pair<double, double>> k_integral;
-    const size_t KINT = 100;
+    const size_t KINT = 30;
     const double wave_k_min = 0.01 * pi;
     const double wave_k_max = 1 * pi;
     {
@@ -251,14 +275,22 @@ int main() {
         }
     }
     Eigen::Matrix<double, 2, Eigen::Dynamic> P0 = P;
+    Eigen::VectorXd D0(nT);
+    for (size_t i=0; i<D0.size(); i++) D0(i) = 1;
 
     int iter = 0;
     const auto& objective = [&](const double *pr_, double* grad_, bool export_all=false) -> double {
-        Eigen::Map< const Eigen::VectorXd > pr(pr_, NPAR);
-        P = P0 + (par * pr).reshaped(2,nP);
+        Eigen::Map< const Eigen::VectorXd > pr_shape(pr_, NPAR_SHAPE);
+        Eigen::Map< const Eigen::VectorXd > pr_depth(pr_ + NPAR_SHAPE, NPAR_DEPTH);
+        P = P0 + (par_shape * pr_shape).reshaped(2,nP);
+        Eigen::VectorXd D = D0 + par_depth * pr_depth;
         double total_obj = 0;
-        Eigen::Map< Eigen::VectorXd >total_grad(grad_, NPAR);
-        if (grad_ != NULL) total_grad.setZero();
+        Eigen::Map< Eigen::VectorXd >total_grad_shape(grad_, NPAR_SHAPE);
+        Eigen::Map< Eigen::VectorXd >total_grad_depth(grad_ + NPAR_SHAPE, NPAR_DEPTH);
+        if (grad_ != NULL) {
+            total_grad_shape.setZero();
+            total_grad_depth.setZero();
+        }
         std::vector<std::pair<double, double> > objs; 
         for(size_t m = 0; m < KINT; m++) {
             double weight = k_integral[m].first;
@@ -267,7 +299,7 @@ int main() {
             Eigen::VectorXd res(DOF);
             Eigen::VectorXd obj(1);
 
-            problem(wave_k, P.data(), x.data(), res.data(), obj.data());
+            problem(wave_k, P.data(), D.data(), x.data(), res.data(), obj.data());
             //printf("obj:%lg\n", obj[0]);
 
             {
@@ -287,7 +319,7 @@ int main() {
                 std::vector<Trip> coef;
                 printf(" [mult]");
                 for (size_t k=0; k<maxk; k++) {
-                    problem_d(wave_k, P.data(), x.data(), ref_x.col(k).data(), res_tmp.data(), Mx.data(), obj_tmp.data());
+                    problem_d(wave_k, P.data(), D.data(), x.data(), ref_x.col(k).data(), res_tmp.data(), Mx.data(), obj_tmp.data());
                     for (size_t j=0; j<DOF; j++){
                         if (fabs(Mx[j]) > 1e-6) {
                             coef.push_back(Trip(j,ref_j(j,k),Mx[j]));
@@ -313,7 +345,7 @@ int main() {
 
             
 
-            problem(wave_k, P.data(), x.data(), res.data(), obj.data());
+            problem(wave_k, P.data(), D.data(), x.data(), res.data(), obj.data());
             {
                 double resL2 = res.norm();
                 printf("Residual (after): %lg\n", resL2);
@@ -325,10 +357,11 @@ int main() {
             // ADJOINT
             if (grad_ != NULL) {
                 Eigen::VectorXd Pb(DOF); Pb.setZero();
+                Eigen::VectorXd Db(nT); Db.setZero();
                 Eigen::VectorXd xb(DOF); xb.setZero();
                 Eigen::VectorXd objb(1); objb.setZero();
                 objb[0] = 1;
-                problem_bX(wave_k, P.data(), x.data(), xb.data(), res_tmp.data(), obj_tmp.data(), objb.data());
+                problem_bX(wave_k, P.data(), D.data(), x.data(), xb.data(), res_tmp.data(), obj_tmp.data(), objb.data());
 
                 Eigen::VectorXd resb;
                 {   
@@ -341,16 +374,20 @@ int main() {
                     printf(" [done]\n");
                 }
                 
-                problem_bP(wave_k, P.data(), Pb.data(), x.data(), res_tmp.data(), resb.data(), obj_tmp.data(), objb.data());
+                problem_bP(wave_k, P.data(), Pb.data(), D.data(), Db.data(), x.data(), res_tmp.data(), resb.data(), obj_tmp.data(), objb.data());
 
-                Eigen::VectorXd grad = Pb.transpose() * par;
-                total_grad += grad * weight;
+                Eigen::VectorXd grad_shape = Pb.transpose() * par_shape;
+                total_grad_shape += grad_shape * weight;
+                Eigen::VectorXd grad_depth = Db.transpose() * par_depth;
+                total_grad_depth += grad_depth * weight;
             }
             if (export_all || (m == KINT-1)) {
                 char buf[1024];
                 sprintf(buf, "output/res_%lg_%04d.vtu", wave_k, iter);
                 write_vtu(buf, std::span(P.data(), P.size()), T, {
                     std::make_tuple(std::string("Eta"), 2, to_span(x))
+                },{
+                    std::make_tuple(std::string("depth"), 1, to_span(D))
                 });
             }
         }
@@ -373,7 +410,7 @@ int main() {
         Eigen::VectorXd gr(NPAR);
         pr(2) += 0.05;
         pr(5) += -0.05;
-        double val = objective(pr.data(), gr.data());
+        double val = objective(pr.data(), gr.data(), true);
         double h = 1e-4;
         for (int i=0; i<NPAR; i++) {
             pr(i) += h;
@@ -395,8 +432,8 @@ int main() {
             obj_type fun = (obj_type) f_data;
             return (*fun)(x, grad);
         }, (void*) &objective);
-    Eigen::VectorXd lower(NPAR);
-    Eigen::VectorXd upper(NPAR);
+    Eigen::VectorXd lower(NPAR); lower.setZero();
+    Eigen::VectorXd upper(NPAR); upper.setZero();
     for (size_t i=0;i<NPAR_SIDE; i++) {
         lower(i*NPAR_PER_NODE+0) = -0.2;
         upper(i*NPAR_PER_NODE+0) =  1.0;
@@ -409,6 +446,11 @@ int main() {
     //     lower(i*NPAR_PER_NODE+3) = -0.2;
     //     upper(i*NPAR_PER_NODE+3) = 1;
     }
+    for (size_t i=0;i<NPAR_DEPTH; i++) {
+        lower(i + NPAR_SHAPE) = -0.2;
+        upper(i + NPAR_SHAPE) =  0.2;
+    }
+
     opt_res = nlopt_set_lower_bounds(opt, lower.data());
     opt_res = nlopt_set_upper_bounds(opt, upper.data());
     opt_res = nlopt_set_maxeval(opt, 500);

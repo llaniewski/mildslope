@@ -8,7 +8,7 @@ extern size_t * boundary;
 extern int * boundary_flag;
 extern size_t n_boundary;
 
-void problem(double wave_k, const double *points, const double* x, double* res, double* obj) {
+void problem(double wave_k, const double *points, const double *depth, const double* x, double* res, double* obj) {
     double M00,M01,M02,M11,M12,M22;
     M00=M11=M22=1.0/6.0;
     M01=M02=M12=1.0/12.0;
@@ -53,7 +53,7 @@ void problem(double wave_k, const double *points, const double* x, double* res, 
         double K12 = gx1*gx2 + gy1*gy2;
         double K22 = gx2*gx2 + gy2*gy2;
         double a = -area*wave_k*wave_k;
-        double b = area;
+        double b = area*depth[i];
         res[i0*2+0] += a*(M00*x[i0*2+0] + M01*x[i1*2+0] + M02*x[i2*2+0]);
         res[i1*2+0] += a*(M01*x[i0*2+0] + M11*x[i1*2+0] + M12*x[i2*2+0]);
         res[i2*2+0] += a*(M02*x[i0*2+0] + M12*x[i1*2+0] + M22*x[i2*2+0]);
