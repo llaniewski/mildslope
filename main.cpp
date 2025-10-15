@@ -253,7 +253,7 @@ int main() {
     Eigen::Matrix<double, 2, Eigen::Dynamic> P0 = P;
 
     int iter = 0;
-    const auto& objective = [&](const double *pr_, double* grad_) -> double {
+    const auto& objective = [&](const double *pr_, double* grad_, bool export_all=false) -> double {
         Eigen::Map< const Eigen::VectorXd > pr(pr_, NPAR);
         P = P0 + (par * pr).reshaped(2,nP);
         double total_obj = 0;
@@ -272,7 +272,7 @@ int main() {
 
             {
                 double resL2 = res.norm();
-                printf("Residual: %lg\n", resL2);
+                printf("Residual (before): %lg\n", resL2);
             }
             
             Eigen::VectorXd Pd(DOF);
@@ -314,6 +314,10 @@ int main() {
             
 
             problem(wave_k, P.data(), x.data(), res.data(), obj.data());
+            {
+                double resL2 = res.norm();
+                printf("Residual (after): %lg\n", resL2);
+            }
             printf("obj:%lg\n", obj[0]);
             total_obj += obj[0]*weight;
             objs.push_back(std::make_pair(wave_k, obj[0]));
@@ -342,7 +346,7 @@ int main() {
                 Eigen::VectorXd grad = Pb.transpose() * par;
                 total_grad += grad * weight;
             }
-            if (m % 10 == 0) {
+            if (export_all || (m == KINT-1)) {
                 char buf[1024];
                 sprintf(buf, "output/res_%lg_%04d.vtu", wave_k, iter);
                 write_vtu(buf, std::span(P.data(), P.size()), T, {
@@ -414,6 +418,8 @@ int main() {
     opt_res = nlopt_optimize(opt, pr.data(), &obj);
     std::cout << pr << "\n";
     printf("Objective: %lg\n", obj);
+    objective(pr.data(),NULL,true);
+
     // for (int k=0; k<60; k++) {
     //     double val = objective(pr.data(), gr.data());
     //     pr += -1e-3*gr;

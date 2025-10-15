@@ -21,6 +21,9 @@ write.table(ret$T-1, "mesh/empty1_triangles.txt", row.names=FALSE,col.names=FALS
 ret = RTriangle::triangulate(p,a=0.001,q=30)
 write.table(ret$P, "mesh/empty2_points.txt", row.names=FALSE,col.names=FALSE)
 write.table(ret$T-1, "mesh/empty2_triangles.txt", row.names=FALSE,col.names=FALSE)
+ret = RTriangle::triangulate(p,a=0.0001,q=30,S=1e6)
+write.table(ret$P, "mesh/empty3_points.txt", row.names=FALSE,col.names=FALSE)
+write.table(ret$T-1, "mesh/empty3_triangles.txt", row.names=FALSE,col.names=FALSE)
 
 
 
@@ -38,4 +41,7 @@ write.table(ret$T-1, "mesh/mesh1_triangles.txt", row.names=FALSE,col.names=FALSE
 ret = RTriangle::triangulate(p,a=0.001,q=30)
 write.table(ret$P, "mesh/mesh2_points.txt", row.names=FALSE,col.names=FALSE)
 write.table(ret$T-1, "mesh/mesh2_triangles.txt", row.names=FALSE,col.names=FALSE)
+ret = RTriangle::triangulate(p,a=0.0001,q=30,S=1e6)
+write.table(ret$P, "mesh/mesh3_points.txt", row.names=FALSE,col.names=FALSE)
+write.table(ret$T-1, "mesh/mesh3_triangles.txt", row.names=FALSE,col.names=FALSE)
 
