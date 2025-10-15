@@ -32,6 +32,7 @@ void problem(double wave_k, const double *points, const double *depth, const dou
         double wy = y2-y0;
         double det = wx*vy-wy*vx;
         double area = -det/2;
+        double dp = (depth[i0]+depth[i1]+depth[i2])/3.0;
         //vx*gx1+vy*gy1 = 1
         //wx*gx1+wy*gy1 = 0
         //gx1 = -wy*gy1/wx
@@ -53,7 +54,7 @@ void problem(double wave_k, const double *points, const double *depth, const dou
         double K12 = gx1*gx2 + gy1*gy2;
         double K22 = gx2*gx2 + gy2*gy2;
         double a = -area*wave_k*wave_k;
-        double b = area*depth[i];
+        double b = area*dp;
         res[i0*2+0] += a*(M00*x[i0*2+0] + M01*x[i1*2+0] + M02*x[i2*2+0]);
         res[i1*2+0] += a*(M01*x[i0*2+0] + M11*x[i1*2+0] + M12*x[i2*2+0]);
         res[i2*2+0] += a*(M02*x[i0*2+0] + M12*x[i1*2+0] + M22*x[i2*2+0]);

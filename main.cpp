@@ -176,13 +176,8 @@ int main() {
     {
         size_t npar=0;
         std::vector<Trip> coef;
-        for (size_t i=0;i<nT;i++) {
-            double x = 0;
-            for(int j=0; j<3; j++) {
-                size_t idx = T[i*3+j];
-                x += P(0,idx);
-            }
-            x = x / 3;
+        for (size_t i=0;i<nP;i++) {
+            double x = P(0,i);
             if ((3<x) && (x<7)) {
                 coef.push_back(Trip(i,npar,1));
                 npar++;
@@ -190,7 +185,7 @@ int main() {
         }
         NPAR_DEPTH = npar;
         printf("depth parameters: %ld (coef.size: %ld)\n", NPAR_DEPTH, coef.size());
-        par_depth.resize(nT,NPAR_DEPTH);
+        par_depth.resize(nP,NPAR_DEPTH);
         par_depth.setFromTriplets(coef.begin(), coef.end());
     }
     size_t NPAR = NPAR_SHAPE + NPAR_DEPTH;
@@ -262,7 +257,7 @@ int main() {
     // problem coefficient
     //double wave_k = 4.0;
     std::vector<std::pair<double, double>> k_integral;
-    const size_t KINT = 30;
+    const size_t KINT = 100;
     const double wave_k_min = 0.01 * pi;
     const double wave_k_max = 1 * pi;
     {
@@ -275,7 +270,7 @@ int main() {
         }
     }
     Eigen::Matrix<double, 2, Eigen::Dynamic> P0 = P;
-    Eigen::VectorXd D0(nT);
+    Eigen::VectorXd D0(nP);
     for (size_t i=0; i<D0.size(); i++) D0(i) = 1;
 
     int iter = 0;
@@ -358,7 +353,7 @@ int main() {
             // ADJOINT
             if (grad_ != NULL) {
                 Eigen::VectorXd Pb(DOF); Pb.setZero();
-                Eigen::VectorXd Db(nT); Db.setZero();
+                Eigen::VectorXd Db(nP); Db.setZero();
                 Eigen::VectorXd xb(DOF); xb.setZero();
                 Eigen::VectorXd objb(1); objb.setZero();
                 objb[0] = 1;
@@ -386,8 +381,7 @@ int main() {
                 char buf[1024];
                 sprintf(buf, "output/res_%lg_%04d.vtu", wave_k, iter);
                 write_vtu(buf, std::span(P.data(), P.size()), T, {
-                    std::make_tuple(std::string("Eta"), 2, to_span(x))
-                },{
+                    std::make_tuple(std::string("Eta"), 2, to_span(x)),
                     std::make_tuple(std::string("depth"), 1, to_span(D))
                 });
             }
@@ -449,7 +443,7 @@ int main() {
     }
     for (size_t i=0;i<NPAR_DEPTH; i++) {
         lower(i + NPAR_SHAPE) = -0.5;
-        upper(i + NPAR_SHAPE) =  2;
+        upper(i + NPAR_SHAPE) =  10;
     }
 
     opt_res = nlopt_set_lower_bounds(opt, lower.data());
