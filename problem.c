@@ -85,10 +85,11 @@ void problem(double wave_k, const double *points, const double* x, double* res, 
         EM01 = 1.0/6.0;
         double val0 = 0;
         double val1 = 0;
+        double o0, o1;
         if (boundary_flag[i] == 1) {
             val1 = 1;
-            double o0 = (x[i0*2+0] - 1)*(x[i0*2+0] - 1) + x[i0*2+1]*x[i0*2+1];
-            double o1 = (x[i1*2+0] - 1)*(x[i1*2+0] - 1) + x[i1*2+1]*x[i1*2+1];
+            o0 = (x[i0*2+0] - 1)*(x[i0*2+0] - 1) + x[i0*2+1]*x[i0*2+1];
+            o1 = (x[i1*2+0] - 1)*(x[i1*2+0] - 1) + x[i1*2+1]*x[i1*2+1];
             obj[0] += 0.5*b*(o0 + o1);
         }
         // if (boundary_flag[i] == 2) {

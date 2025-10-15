@@ -333,7 +333,7 @@ int main() {
                     printf(" [compute]");
                     solver.compute(A.transpose()); assert(solver.info() == Eigen::Success);
                     printf(" [solve]");
-                    resb = solver.solve(xb); assert(solver.info() == Eigen::Success);
+                    resb = solver.solve(-xb); assert(solver.info() == Eigen::Success);
                     printf(" [done]\n");
                 }
                 
@@ -364,24 +364,24 @@ int main() {
         return total_obj;
     };
     
-    // {
-    //     Eigen::VectorXd pr(NPAR); pr.setZero();
-    //     Eigen::VectorXd gr(NPAR);
-    //     pr(2) += 0.05;
-    //     pr(5) += -0.05;
-    //     double val = objective(pr.data(), gr.data());
-    //     double h = 1e-4;
-    //     for (int i=0; i<NPAR; i++) {
-    //         pr(i) += h;
-    //         double val1 = objective(pr.data(), NULL);
-    //         pr(i) -= 2*h;
-    //         double val2 = objective(pr.data(), NULL);
-    //         pr(i) += h;
-    //         double fd = (val1-val2)/(2*h);
-    //         printf("grad: %d %lg -- %lg => %lg\n", i, fd, gr(i), fd - gr(i));
-    //     }
-    //     return 0;
-    // }
+    if (false) { // FD test
+        Eigen::VectorXd pr(NPAR); pr.setZero();
+        Eigen::VectorXd gr(NPAR);
+        pr(2) += 0.05;
+        pr(5) += -0.05;
+        double val = objective(pr.data(), gr.data());
+        double h = 1e-4;
+        for (int i=0; i<NPAR; i++) {
+            pr(i) += h;
+            double val1 = objective(pr.data(), NULL);
+            pr(i) -= 2*h;
+            double val2 = objective(pr.data(), NULL);
+            pr(i) += h;
+            double fd = (val1-val2)/(2*h);
+            printf("grad: %d %lg -- %lg => %lg\n", i, fd, gr(i), fd - gr(i));
+        }
+        return 0;
+    }
 
     using obj_type = decltype(&objective);
     nlopt_opt opt = nlopt_create(NLOPT_LD_LBFGS, NPAR);
