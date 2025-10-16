@@ -3,7 +3,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-void write_vtu(char* filename, std::span<double> points, std::span<size_t> triangles, const std::vector<std::tuple<std::string, int, std::span<double>>> fields) {
+void write_vtu(char* filename, std::span<double> points, std::span<size_t> triangles,
+    const std::vector<std::tuple<std::string, int, std::span<double>>> point_fields,
+    const std::vector<std::tuple<std::string, int, std::span<double>>> cell_fields) {
     FILE* f = fopen(filename, "w");
     if (f == NULL) {
         fprintf(stderr, "Failed to open file: %s\n", filename);
@@ -20,7 +22,7 @@ void write_vtu(char* filename, std::span<double> points, std::span<size_t> trian
     fprintf(f, "  <UnstructuredGrid>\n");
     fprintf(f, "    <Piece NumberOfPoints=\"%ld\" NumberOfCells=\"%ld\">\n", npoints, ncells);
     fprintf(f, "      <PointData>\n");
-    for (const auto& field : fields) {
+    for (const auto& field : point_fields) {
         const std::string name = std::get<0>(field);
         const int comp = std::get<1>(field);
         const std::span<double> vals = std::get<2>(field);
@@ -40,6 +42,24 @@ void write_vtu(char* filename, std::span<double> points, std::span<size_t> trian
     }
     fprintf(f, "      </PointData>\n");
     fprintf(f, "      <CellData>\n");
+    for (const auto& field : cell_fields) {
+        const std::string name = std::get<0>(field);
+        const int comp = std::get<1>(field);
+        const std::span<double> vals = std::get<2>(field);
+        //printf("Writing %s with %d components (%ld values)\n", name.c_str(), comp, vals.size());
+        if (vals.size() != ncells*comp) {
+            fprintf(stderr, "Wrong number of elements in field %s\n", name.c_str());
+            exit(-1);
+        }
+        printf(" [%s]", name.c_str());
+        fprintf(f, "        <DataArray type=\"Float64\" Name=\"%s\" NumberOfComponents=\"%d\" format=\"ascii\">\n", name.c_str(), comp);
+        for (size_t i=0; i<vals.size(); i++) {
+            fprintf(f, " %.15lg", vals[i]);
+            if (i % 6 == 0) fprintf(f, "\n");
+        }
+        fprintf(f, "\n");
+        fprintf(f, "        </DataArray>\n");
+    }
     fprintf(f, "      </CellData>\n");
     printf(" [mesh]");
     fprintf(f, "      <Points>\n");
