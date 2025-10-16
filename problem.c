@@ -98,9 +98,11 @@ void problem(double wave_k, const double *points, const double *depth, const dou
         //     double o1 = x[i1*2+0]*x[i1*2+0] + x[i1*2+1]*x[i1*2+1];
         //     obj[0] += 0.5*b*(o0 + o1);
         // }
-        res[i0*2+0] +=  b*robin*(EM00 * x[i0*2+1] + EM01 * x[i1*2+1] - val0);
-        res[i1*2+0] +=  b*robin*(EM01 * x[i0*2+1] + EM11 * x[i1*2+1] - val0);
-        res[i0*2+1] += -b*robin*(EM00 * x[i0*2+0] + EM01 * x[i1*2+0] - val1);
-        res[i1*2+1] += -b*robin*(EM01 * x[i0*2+0] + EM11 * x[i1*2+0] - val1);
+        if ((boundary_flag[i] == 1) || (boundary_flag[i] == 2)) {
+            res[i0*2+0] +=  b*robin*(EM00 * x[i0*2+1] + EM01 * x[i1*2+1] - val0);
+            res[i1*2+0] +=  b*robin*(EM01 * x[i0*2+1] + EM11 * x[i1*2+1] - val0);
+            res[i0*2+1] += -b*robin*(EM00 * x[i0*2+0] + EM01 * x[i1*2+0] - val1);
+            res[i1*2+1] += -b*robin*(EM01 * x[i0*2+0] + EM11 * x[i1*2+0] - val1);
+        }
     }
 }

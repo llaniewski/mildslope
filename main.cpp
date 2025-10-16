@@ -31,128 +31,106 @@ extern "C" {
 typedef Eigen::SparseMatrix<double> SpMat;
 typedef Eigen::Triplet<double> Trip;
 
-template <class T>
-std::span<T> to_span(Eigen::Matrix<T, Eigen::Dynamic, 1>& vec) { return std::span(vec.data(), vec.size()); }
+// template <class T>
+// std::span<T> to_span(Eigen::Matrix<T, Eigen::Dynamic, 1>& vec) { return std::span(vec.data(), vec.size()); }
+template <typename Scalar, int RowsAtCompileTime, int ColsAtCompileTime>
+std::span<Scalar> to_span(Eigen::Matrix<Scalar, RowsAtCompileTime, ColsAtCompileTime>& vec) { return std::span(vec.data(), vec.size()); }
+template <typename Scalar, int RowsAtCompileTime, int ColsAtCompileTime>
+std::span<Scalar> to_span(Eigen::Array<Scalar, RowsAtCompileTime, ColsAtCompileTime>& vec) { return std::span(vec.data(), vec.size()); }
+
+FILE* fopen_safe(std::string fn, char* mode) {
+    FILE* f = fopen(fn.c_str(), mode);
+    if (f == NULL) {
+        fprintf(stderr, "Cannot open file: %s\n", fn.c_str());
+        exit(2);
+    }
+    return f;
+}
 
 int main() {
 
     size_t nP;
-    std::vector<size_t> T;
     size_t nT;
-    std::vector<size_t> B;
-    std::vector<int> B_flag;
     size_t nB;
-
-    std::string mesh = "mesh/mesh2";
+    size_t nAttr;
+    Eigen::Array<size_t, 3, Eigen::Dynamic> T;
+    Eigen::Array<size_t, 2, Eigen::Dynamic> B;
+    Eigen::Array<int, Eigen::Dynamic, 1> B_flag;
     Eigen::Matrix<double, 2, Eigen::Dynamic> P;
+    Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> Attr;
+
+    std::string mesh_name = "circ_20.1";
+   
     {
         std::vector<double> Pv;
-        FILE* f = fopen((mesh+"_points.txt").c_str(),"rb");
-        nP = 0;
-        while (! feof(f)) {
-            double x,y;
-            fscanf(f, "%lf %lf",&x,&y);
-            if (feof(f)) break;
-            Pv.push_back(x);
-            Pv.push_back(y);
-            nP++;
+        FILE* f = fopen_safe(mesh_name+".node","rb");
+        int dim, bord;
+        fscanf(f, "%ld %d %ld %d", &nP, &dim, &nAttr, &bord);
+        assert(dim == 2);
+        P.resize(dim, nP);
+        Attr.resize(nP, nAttr);
+        for (size_t i=0;i<nP;i++) {
+            size_t idx;
+            fscanf(f, "%ld", &idx);
+            assert(idx == i+1);
+            for (int j=0;j<dim;j++) fscanf(f,"%lf", &P(j,i));
+            for (size_t j=0;j<nAttr;j++) fscanf(f,"%lf", &Attr(i,j));
+            for (int j=0;j<bord;j++) { int ignore; fscanf(f,"%d", &ignore); }
         }
         fclose(f);
-        P.resize(2, nP);
-        for (size_t i=0;i<nP;i++) {
-            P(0,i) = Pv[2*i+0];
-            P(1,i) = Pv[2*i+1];
-        }
     }
     printf("Points %ld\n", nP);
     {
-        FILE* f = fopen((mesh+"_triangles.txt").c_str(),"rb");
-        nT = 0;
-        while (! feof(f)) {
-            size_t i1,i2,i3;
-            fscanf(f, "%ld %ld %ld",&i1,&i2,&i3);
-            if (feof(f)) break;
-            T.push_back(i1);
-            T.push_back(i2);
-            T.push_back(i3);
-            nT++;
+        FILE* f = fopen_safe(mesh_name+".ele","rb");
+        int el_size, bord;
+        fscanf(f, "%ld %d %d", &nT, &el_size, &bord);
+        assert(el_size == 3);
+        T.resize(el_size, nT);
+        for (size_t i=0;i<nT;i++) {
+            size_t idx;
+            fscanf(f, "%ld", &idx);
+            assert(idx == i+1);
+            for (int j=0;j<el_size;j++) { size_t tmp; fscanf(f,"%ld", &tmp); T(j,i) = tmp-1; }
+            for (int j=0;j<bord;j++) { int ignore; fscanf(f,"%d", &ignore); }
         }
         fclose(f);
     }
     printf("Triangles: %ld\n", nT);
-
     {
-        double maxx=P(0,0), minx=P(0,0);
-        for (size_t i=0;i<nP;i++) {
-            if (P(0,i) > maxx) maxx = P(0,i);
-            if (P(0,i) < minx) minx = P(0,i);
+        FILE* f = fopen_safe(mesh_name+".poly","rb");
+        size_t nP_, nAttr_;
+        int dim_, bord_;
+        fscanf(f, "%ld %d %ld %d", &nP_, &dim_, &nAttr_, &bord_);
+        assert(nP_ == 0);
+        const int edge_size = 2;
+        int bord;
+        fscanf(f, "%ld %d", &nB, &bord);        
+        assert(bord == 1);
+        B.resize(2, nB);
+        B_flag.resize(nB, bord);
+        for (size_t i=0;i<nB;i++) {
+            size_t idx;
+            fscanf(f, "%ld", &idx);
+            assert(idx == i+1);
+            for (int j=0;j<edge_size;j++) { size_t tmp; fscanf(f,"%ld", &tmp); B(j,i) = tmp-1; }
+            for (int j=0;j<bord;j++) fscanf(f,"%d", &B_flag(i,j));
         }
-        printf("X: [%lg, %lg]\n", minx, maxx);
-        auto fun = [&nT,&T,&nP,&P,&nB,&B,&B_flag](double val, int flag){
-            for (size_t i=0;i<nT;i++) {
-                int count=0;
-                for (int j=0; j<3; j++) {
-                    size_t idx = T[i*3+j];
-                    if (fabs(P(0,idx) - val) < 1e-6) {
-                        //printf("Added: %ld %ld\n",i, idx);
-                        B.push_back(idx);
-                        count++;
-                    }
-                }
-                if (count == 1) {
-                    B.pop_back();
-                } else if (count == 2) {
-                    B_flag.push_back(flag);
-                } else if (count > 2) {
-                    fprintf(stderr, "Whole triangle on edge\n");
-                    exit(2);
-                }
-            }
-            if (B.size() % 2 != 0) {
-                fprintf(stderr, "border edges wrong\n");
-                exit(2);
-            }
-        };
-        fun(minx, 1);
-        fun(maxx, 2);
+        fclose(f);
     }
-    nB = B.size()/2;
-    printf("Borders: %ld\n", nB);
+    printf("Border: %ld\n", nB);
+
 
     const size_t DOFperP = 2;
     const size_t DOF = nP*DOFperP;
 
-    const size_t NPAR_SIDE = 0;
+    size_t NPAR_SIDE = nAttr;
     const size_t NPAR_PER_NODE = 1;
     const size_t NPAR_SHAPE = NPAR_SIDE*NPAR_PER_NODE;
-    Eigen::Matrix<double, Eigen::Dynamic, NPAR_SHAPE> par_shape(DOF,NPAR_SHAPE); par_shape.setZero();
-    if (true) {
-        std::vector<double> nodes_x;
-        for (size_t i=0; i<NPAR_SIDE+2; i++) nodes_x.push_back(3.0+(7.0-3.0)*(i)/(NPAR_SIDE+1));
-        const auto& fun = [&nodes_x](size_t i, int side, double x, double y) {
-            double x0 = nodes_x[i+0];
-            double x1 = nodes_x[i+1];
-            double x2 = nodes_x[i+2];
-            double ret = 1;
-            if (x < x0) ret = 0;
-            else if (x < x1) ret = (x-x0)/(x1-x0);
-            else if (x < x2) ret = (x-x2)/(x1-x2);
-            else ret = 0;
-            double r = sqrt((5-x)*(5-x) + (0.5-y)*(0.5-y));
-            if (r < 0.3) ret = 0;
-            else if (r < 0.5) ret = ret * (r-0.3)/(0.5-0.3);
-            else ret = ret;
-            if (side) ret = ret * (y-1.0) / (0.0-1.0);
-            else ret = ret * (y-0.0) / (1.0-0.0);
-            return ret;
-        };
+    Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> par_shape(DOF,NPAR_SHAPE); par_shape.setZero();
+    {
         for (int j = 0; j<NPAR_SIDE; j++) {
             for (int i = 0; i<nP; i++) {
-                par_shape(i*2+1,j*NPAR_PER_NODE+0) = - fun(j,true,P(0,i),P(1,i)) + fun(j,false,P(0,i),P(1,i));
-                // par(i*2+0,j*NPAR_PER_NODE+0) = fun(j,true,P(0,i),P(1,i));
-                // par(i*2+1,j*NPAR_PER_NODE+1) = -fun(j,true,P(0,i),P(1,i));
-                // par(i*2+0,j*NPAR_PER_NODE+2) = fun(j,false,P(0,i),P(1,i));
-                // par(i*2+1,j*NPAR_PER_NODE+3) = fun(j,false,P(0,i),P(1,i));
+                par_shape(i*2+1,j*NPAR_PER_NODE+0) = Attr(i,j);
             }
         }
     }
@@ -168,7 +146,7 @@ int main() {
                 std::span(par_shape.col(j).data(),par_shape.col(j).size())
             ));
         }
-        write_vtu("output/par.vtu", std::span(P.data(), P.size()), T, fields);
+        write_vtu("output/par.vtu", to_span(P), to_span(T), fields);
     }
 
     size_t NPAR_DEPTH=0;
@@ -202,7 +180,7 @@ int main() {
         std::vector<std::set<size_t>> graph(DOF);
         for (size_t i=0;i<nT;i++) {
             size_t Ti[3];
-            for (char j=0;j<3;j++) Ti[j] = T[i*3+j];
+            for (char j=0;j<3;j++) Ti[j] = T(j,i);
             for (char j=0;j<3;j++)
                 for (char k=0;k<3;k++)
                     for (char d1=0;d1<DOFperP;d1++)
@@ -277,8 +255,8 @@ int main() {
     const auto& objective = [&](const double *pr_, double* grad_, bool export_all=false) -> double {
         Eigen::Map< const Eigen::VectorXd > pr_shape(pr_, NPAR_SHAPE);
         Eigen::Map< const Eigen::VectorXd > pr_depth(pr_ + NPAR_SHAPE, NPAR_DEPTH);
-        //P = P0 + (par_shape * pr_shape).reshaped(2,nP);
-        P = P0;
+        P = P0 + (par_shape * pr_shape).reshaped(2,nP);
+        //P = P0;
         Eigen::VectorXd D = D0 + par_depth * pr_depth;
         double total_obj = 0;
         Eigen::Map< Eigen::VectorXd >total_grad_shape(grad_, NPAR_SHAPE);
@@ -372,15 +350,15 @@ int main() {
                 
                 problem_bP(wave_k, P.data(), Pb.data(), D.data(), Db.data(), x.data(), res_tmp.data(), resb.data(), obj_tmp.data(), objb.data());
 
-                // Eigen::VectorXd grad_shape = Pb.transpose() * par_shape;
-                // total_grad_shape += grad_shape * weight;
+                Eigen::VectorXd grad_shape = Pb.transpose() * par_shape;
+                total_grad_shape += grad_shape * weight;
                 Eigen::VectorXd grad_depth = Db.transpose() * par_depth;
                 total_grad_depth += grad_depth * weight;
             }
             if (export_all || (m == KINT-1)) {
                 char buf[1024];
                 sprintf(buf, "output/res_%lg_%04d.vtu", wave_k, iter);
-                write_vtu(buf, std::span(P.data(), P.size()), T, {
+                write_vtu(buf, to_span(P), to_span(T), {
                     std::make_tuple(std::string("Eta"), 2, to_span(x)),
                     std::make_tuple(std::string("depth"), 1, to_span(D))
                 });
@@ -469,7 +447,7 @@ int main() {
     opt_res = nlopt_set_maxeval(opt, 500);
 
     Eigen::VectorXd pr(NPAR); pr.setZero();
-    double obj;
+    double obj = 0;
     opt_res = nlopt_optimize(opt, pr.data(), &obj);
     std::cout << pr << "\n";
     printf("Objective: %lg\n", obj);
