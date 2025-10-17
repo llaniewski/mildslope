@@ -252,7 +252,7 @@ int main() {
         Eigen::VectorXd energy_tmp(2);
         Eigen::VectorXd energy_weights(2);
         energy_weights(0) = 1.0;
-        energy_weights(1) = .0;
+        energy_weights(1) = 1.0;
         Eigen::VectorXd Mx(DOF);
         for (size_t k=0; k<maxk; k++) {
             Mx.setZero();
@@ -312,7 +312,7 @@ int main() {
     }
 
 
-    //return 0;
+    return 0;
 
     // problem coefficient
     //double wave_k = 4.0;
