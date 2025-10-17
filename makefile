@@ -15,3 +15,11 @@ problem_b.c : problem.c
 	$(TAPENADE) -fixinterface -b -head 'problem[X](obj)/(x)' -head 'problem[P](res,obj)/(points,depth)' $<
 	sed -e '/adStack/s|^|//|' -i $@
 	./ADmod.R -f $@ -o $@
+
+morph_energy_b.c : morph_energy.c
+	$(TAPENADE) -fixinterface -b -head 'morph_energy(energy)/(P1)' $<
+	sed -e '/adStack/s|^|//|' -i $@
+	./ADmod.R -f $@ -o $@
+
+morph_energy_b_d.c : morph_energy_b.c
+	$(TAPENADE) -fixinterface -d -head 'morph_energy_b(P1b)/(P1)' $<
