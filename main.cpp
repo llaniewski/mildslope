@@ -26,6 +26,9 @@ extern "C" {
     void problem_d(double wave_k, const double *points, const double *depth, const double *x, const double *xd, double *res, double *resd, double *obj);
     void problem_bP(double wave_k, const double *points, double *pointsb, const double *depth, const double *depthb, const double *x, double *res, double *resb, double *obj, double *objb);
     void problem_bX(double wave_k, const double *points, const double *depth, const double *x, double *xb, double *res, double *obj, double *objb);
+    void morph_energy(const double *P0, const double *P1, double *energy);
+    void morph_energy_b(const double *P0, const double *P1, double *P1b, double *energy, double *energyb);
+    void morph_energy_b_d(const double *P0, const double *P1, const double *P1d, double *P1b, double *P1bd, double *energy, double *energyb);
 }
 
 typedef Eigen::SparseMatrix<double> SpMat;
@@ -231,6 +234,84 @@ int main() {
     boundary = B.data();
     boundary_flag = B_flag.data();
     n_boundary = nB;
+
+    std::vector<bool> P_bord(DOF);
+    for (size_t i=0;i<P_bord.size();i++) P_bord[i] = false;
+    for (size_t i=0;i<nB;i++) {
+        for (int j=0;j<2;j++)
+            for (int k=0;k<2;k++)
+                P_bord[B(j,i)*2+k] = true;
+    }
+
+    SpMat K(DOF,DOF);
+    {
+        printf("Gathering morphing energy Hessian at 0");
+        std::vector<Trip> coef;
+        printf(" [mult]");
+        Eigen::VectorXd P1b_tmp(DOF);
+        Eigen::VectorXd energy_tmp(1);
+        Eigen::VectorXd energy_weights(1);
+        energy_weights(0) = 1.0;
+        Eigen::VectorXd Mx(DOF);
+        for (size_t k=0; k<maxk; k++) {
+            Mx.setZero();
+            morph_energy_b_d(P.data(), P.data(), ref_x.col(k).data(), P1b_tmp.data(), Mx.data(), energy_tmp.data(), energy_weights.data());
+            for (size_t j=0; j<DOF; j++){
+                if (fabs(Mx[j]) > 1e-6) {
+                    if (! P_bord[j]) {
+                        coef.push_back(Trip(j,ref_j(j,k),Mx[j]));
+                    }
+                }
+            }
+            printf("mult %ld -> %ld\n", k, coef.size());
+        }
+        for (size_t j=0; j<DOF; j++) {
+            if (P_bord[j]){
+                coef.push_back(Trip(j,j,1));
+            }                
+        }
+        printf(" [sparse]");
+        K.setFromTriplets(coef.begin(), coef.end());
+        printf(" [done]\n");
+    }
+
+    {
+        for (size_t i=0; i<DOF; i++) {
+            for (int j = 0; j<NPAR_SHAPE; j++) {
+                if (!P_bord[i]){
+                    par_shape(i,j) = 0;
+                }                
+            }
+        }
+        printf("Solving linear problem");
+        Eigen::KLU<SpMat> solver;  // performs a Cholesky factorization of A
+        printf(" [compute]");
+        solver.compute(K); assert(solver.info() == Eigen::Success);
+        printf(" [solve]");
+        for (int j = 0; j<NPAR_SHAPE; j++) {
+            par_shape.col(j) = solver.solve(par_shape.col(j));
+            assert(solver.info() == Eigen::Success);
+        }
+        printf(" [done]\n");
+    }
+
+
+    {
+        std::vector<std::tuple<std::string, int, std::span<double> > >fields;
+        for (int j = 0; j<NPAR_SHAPE; j++) {
+            char buf[1024];
+            sprintf(buf, "par_%02d", j);
+            fields.push_back(std::make_tuple(
+                std::string(buf),
+                2,
+                std::span(par_shape.col(j).data(),par_shape.col(j).size())
+            ));
+        }
+        write_vtu("output/par_morph.vtu", to_span(P), to_span(T), fields);
+    }
+
+
+    //return 0;
 
     // problem coefficient
     //double wave_k = 4.0;

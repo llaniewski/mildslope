@@ -5,7 +5,7 @@ CFLAGS+=-O3 -fopenmp
 # CFLAGS+=-g
 TAPENADE=$(HOME)/tapenade/tapenade_3.16/bin/tapenade
 
-main: main.o vtu_write.o solve.o problem.o problem_d.o problem_b.o
+main: main.o vtu_write.o solve.o problem.o problem_d.o problem_b.o morph_energy_b_d.o
 	$(CXX) $(CXXFLAGS) -o $@ $^ -lklu -lnlopt
 
 problem_d.c : problem.c
