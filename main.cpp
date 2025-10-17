@@ -249,9 +249,10 @@ int main() {
         std::vector<Trip> coef;
         printf(" [mult]");
         Eigen::VectorXd P1b_tmp(DOF);
-        Eigen::VectorXd energy_tmp(1);
-        Eigen::VectorXd energy_weights(1);
+        Eigen::VectorXd energy_tmp(2);
+        Eigen::VectorXd energy_weights(2);
         energy_weights(0) = 1.0;
+        energy_weights(1) = .0;
         Eigen::VectorXd Mx(DOF);
         for (size_t k=0; k<maxk; k++) {
             Mx.setZero();
@@ -263,7 +264,7 @@ int main() {
                     }
                 }
             }
-            printf("mult %ld -> %ld\n", k, coef.size());
+            //printf("mult %ld -> %ld\n", k, coef.size());
         }
         for (size_t j=0; j<DOF; j++) {
             if (P_bord[j]){

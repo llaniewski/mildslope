@@ -7,6 +7,7 @@ extern size_t n_points;
 
 void morph_energy(const double *P0, const double* P1, double* energy) {
     energy[0] = 0;
+    energy[1] = 0;
     // $AD II-LOOP
     for (size_t i=0;i<n_triangles;i++) {
         size_t i0 = triangles[i*3+0];
@@ -27,6 +28,7 @@ void morph_energy(const double *P0, const double* P1, double* energy) {
         double myx = detinv*(-wy1*wx0 + wx1*wy0);
         double myy = detinv*( wy1*vx0 - wx1*vy0) - 1;
         double area = -det/2;
-        energy[0] = energy[0] + area * (mxx*mxx + myy*myy);
+        energy[0] = energy[0] + area * (mxx + myy)*(mxx + myy);
+        energy[1] = energy[1] + area * (mxx*mxx + 2*mxy*myx + myy*myy);
     }
 }
