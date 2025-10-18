@@ -251,8 +251,10 @@ int main() {
         Eigen::VectorXd P1b_tmp(DOF);
         Eigen::VectorXd energy_tmp(2);
         Eigen::VectorXd energy_weights(2);
-        energy_weights(0) = 1.0;
-        energy_weights(1) = 1.0;
+        double YoungMod = 1.0;
+        double Poiss = 0.0;
+        energy_weights(0) = YoungMod*Poiss/((1+Poiss)*(1-2*Poiss)); //(tr(E))^2
+        energy_weights(1) = 2*YoungMod/(2*(1+Poiss)); // tr(E^2)
         Eigen::VectorXd Mx(DOF);
         for (size_t k=0; k<maxk; k++) {
             Mx.setZero();
@@ -295,7 +297,7 @@ int main() {
         }
         printf(" [done]\n");
     }
-
+    
 
     {
         std::vector<std::tuple<std::string, int, std::span<double> > >fields;
@@ -312,7 +314,7 @@ int main() {
     }
 
 
-    return 0;
+    //return 0;
 
     // problem coefficient
     //double wave_k = 4.0;

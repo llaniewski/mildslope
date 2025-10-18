@@ -1,5 +1,5 @@
 r = 0.6/2
-npar = 20
+npar = 60
 xpar = 2
 ncirc = 30
 
