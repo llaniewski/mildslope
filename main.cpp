@@ -62,7 +62,7 @@ int main() {
     Eigen::Matrix<double, 2, Eigen::Dynamic> P;
     Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> Attr;
 
-    std::string mesh_name = "circ_20.1";
+    std::string mesh_name = "turn.1";
    
     {
         std::vector<double> Pv;
