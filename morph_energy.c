@@ -35,7 +35,7 @@ void morph_energy(const double *P0, const double* P1, double* energy) {
         double F01 = Xx11*Xx10 + Xx01*Xx00;
         double F11 = -1 + Xx11*Xx11 + Xx01*Xx01;
         double area = -det/2;
-        energy[0] = energy[0] + area * (F00 + F00)*(F11 + F11);
+        energy[0] = energy[0] + area * (F00 + F11)*(F00 + F11);
         energy[1] = energy[1] + area * (F00*F00+2*F01*F10+F11*F11);
     }
 }

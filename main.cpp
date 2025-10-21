@@ -50,7 +50,9 @@ FILE* fopen_safe(std::string fn, char* mode) {
     return f;
 }
 
-int main() {
+int main(int argc, char **argv) {
+    std::vector<std::string> args;
+    for (size_t i = 0;i<argc;i++) args.push_back(argv[i]);
 
     size_t nP;
     size_t nT;
@@ -62,7 +64,11 @@ int main() {
     Eigen::Matrix<double, 2, Eigen::Dynamic> P;
     Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> Attr;
 
-    std::string mesh_name = "turn.1";
+    if (args.size() != 2) {
+        fprintf(stderr, "Usage: ./main case\n");
+        exit(2);
+    }
+    std::string mesh_name = args[1];
    
     {
         std::vector<double> Pv;
@@ -252,9 +258,11 @@ int main() {
         Eigen::VectorXd energy_tmp(2);
         Eigen::VectorXd energy_weights(2);
         double YoungMod = 1.0;
-        double Poiss = 0.0;
-        energy_weights(0) = YoungMod*Poiss/((1+Poiss)*(1-2*Poiss)); //(tr(E))^2
-        energy_weights(1) = 2*YoungMod/(2*(1+Poiss)); // tr(E^2)
+        double Poiss = 0.4;
+        // energy_weights(0) = YoungMod*Poiss/((1+Poiss)*(1-2*Poiss)); //(tr(E))^2
+        // energy_weights(1) = 2*YoungMod/(2*(1+Poiss)); // tr(E^2)
+        energy_weights(0) = Poiss; //(tr(E))^2
+        energy_weights(1) = (1-2*Poiss); // tr(E^2)
         Eigen::VectorXd Mx(DOF);
         for (size_t k=0; k<maxk; k++) {
             Mx.setZero();
@@ -314,7 +322,7 @@ int main() {
     }
 
 
-    //return 0;
+    return 0;
 
     // problem coefficient
     //double wave_k = 4.0;
