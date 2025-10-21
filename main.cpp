@@ -318,8 +318,11 @@ int main() {
 
     // problem coefficient
     //double wave_k = 4.0;
-    std::vector<std::pair<double, double>> k_integral;
+    const int NOBJ = 3;
     const size_t KINT = 100;
+    Eigen::VectorXd integral_k(KINT);
+    Eigen::Matrix<double, NOBJ, Eigen::Dynamic> integral_weights(NOBJ,KINT);
+    integral_weights.setZero();
     const double wave_k_min = 0.01 * pi;
     const double wave_k_max = 1 * pi;
     {
@@ -328,7 +331,8 @@ int main() {
             double weight = k_dist;
             if ((i == 0) || (i == KINT-1)) weight = weight/2;
             double wave_k = wave_k_min + i*k_dist;
-            k_integral.push_back(std::make_pair(weight, wave_k));
+            integral_k(i) = wave_k;
+            integral_weights(0,i) = weight;
         }
     }
     Eigen::Matrix<double, 2, Eigen::Dynamic> P0 = P;
@@ -351,11 +355,11 @@ int main() {
         }
         std::vector<std::pair<double, double> > objs; 
         for(size_t m = 0; m < KINT; m++) {
-            double weight = k_integral[m].first;
-            double wave_k = k_integral[m].second;
+            double wave_k = integral_k(m);
+            Eigen::VectorXd weights = integral_weights.col(m);
             Eigen::VectorXd x(DOF); x.setZero();
             Eigen::VectorXd res(DOF);
-            Eigen::VectorXd obj(1);
+            Eigen::VectorXd obj(NOBJ);
 
             problem(wave_k, P.data(), D.data(), x.data(), res.data(), obj.data());
             //printf("obj:%lg\n", obj[0]);
@@ -367,7 +371,7 @@ int main() {
             
             Eigen::VectorXd Pd(DOF);
             Eigen::VectorXd res_tmp(DOF);
-            Eigen::VectorXd obj_tmp(1);
+            Eigen::VectorXd obj_tmp(NOBJ);
 
             Eigen::VectorXd Mx(DOF);
 
@@ -409,7 +413,7 @@ int main() {
                 printf("Residual (after): %lg\n", resL2);
             }
             printf("obj:%lg\n", obj[0]);
-            total_obj += obj[0]*weight;
+            total_obj += weights.dot(obj);
             objs.push_back(std::make_pair(wave_k, obj[0]));
 
             // ADJOINT
@@ -417,8 +421,8 @@ int main() {
                 Eigen::VectorXd Pb(DOF); Pb.setZero();
                 Eigen::VectorXd Db(nP); Db.setZero();
                 Eigen::VectorXd xb(DOF); xb.setZero();
-                Eigen::VectorXd objb(1); objb.setZero();
-                objb[0] = 1;
+                Eigen::VectorXd objb(NOBJ); objb.setZero();
+                objb = weights;
                 problem_bX(wave_k, P.data(), D.data(), x.data(), xb.data(), res_tmp.data(), obj_tmp.data(), objb.data());
 
                 Eigen::VectorXd resb;
@@ -435,9 +439,9 @@ int main() {
                 problem_bP(wave_k, P.data(), Pb.data(), D.data(), Db.data(), x.data(), res_tmp.data(), resb.data(), obj_tmp.data(), objb.data());
 
                 Eigen::VectorXd grad_shape = Pb.transpose() * par_shape;
-                total_grad_shape += grad_shape * weight;
+                total_grad_shape += grad_shape;
                 Eigen::VectorXd grad_depth = Db.transpose() * par_depth;
-                total_grad_depth += grad_depth * weight;
+                total_grad_depth += grad_depth;
             }
             if (export_all || (m == KINT-1)) {
                 char buf[1024];
