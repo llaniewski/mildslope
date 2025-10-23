@@ -19,7 +19,7 @@ N=300
 x = seq(-4,4,len=N)
 p = expand.grid(x=x,y=x)
 p$r = sqrt(p$x*p$x+p$y*p$y)
-p$theta = atan2(p$x,p$y)
+p$theta = atan2(p$y,p$x)
 
 image_cpx = function(f,zlim=c(-1,1)*max(abs(Re(f)),abs(Im(f)),na.rm=TRUE)) {
     par(mfrow=c(2,1))
@@ -46,6 +46,8 @@ bigmat = sapply(i[sel], function(n) exp(p$theta*1i*n) * BesselY(k*p$r,n))
 f = bigmat %*% coef[sel]
 f[p$r<1] = NA
 image_cpx(f)
+range(Re(f),na.rm=TRUE)
+range(Im(f),na.rm=TRUE)
 
 range(Re(exp(1i*k*p$y) - f/2))
 image_cpx(exp(1i*k*p$y) - f/2)
