@@ -67,7 +67,7 @@ public:
         nT = 0;
         nAttr = 0;        
     }
-    int load_mesh(const std::string& mesh_name) {
+    int read_mesh(const std::string& mesh_name) {
         FILE* f;
         int dim, bord, el_size, ignore;
         f = fopen_safe(mesh_name+".node","rb");
@@ -137,44 +137,56 @@ int main(int argc, char **argv) {
 
     m.read_mesh(mesh_name);
 
+    {
+        std::map<size_t, std::vector< Eigen::Vector2d > > bvec;
+        for (size_t i=0; i<m.nB; i++) {
+            size_t i0 = m.B(0,i);
+            size_t i1 = m.B(1,i);
+            Eigen::Vector2d p0 = m.P.col(i0);
+            Eigen::Vector2d p1 = m.P.col(i1);
+            bvec[i].push_back(p1-p0);
+        }
+    }
+
     const size_t DOFperP = 2;
     const size_t DOF = m.nP*DOFperP;
 
 
-    
-    size_t NPAR_SIDE = nAttr;
-    const size_t NPAR_PER_NODE = 1;
-    const size_t NPAR_SHAPE = NPAR_SIDE*NPAR_PER_NODE;
-    Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> par_shape(DOF,NPAR_SHAPE); par_shape.setZero();
-    {
-        for (int j = 0; j<NPAR_SIDE; j++) {
-            for (int i = 0; i<nP; i++) {
-                par_shape(i*2+1,j*NPAR_PER_NODE+0) = Attr(i,j);
-            }
-        }
-    }
 
-    {
-        std::vector<std::tuple<std::string, int, std::span<double> > >fields;
-        for (int j = 0; j<NPAR_SHAPE; j++) {
-            char buf[1024];
-            sprintf(buf, "par_%02d", j);
-            fields.push_back(std::make_tuple(
-                std::string(buf),
-                2,
-                std::span(par_shape.col(j).data(),par_shape.col(j).size())
-            ));
-        }
-        write_vtu("output/par.vtu", to_span(P), to_span(T), fields);
-    }
+    // size_t NPAR_SIDE = nAttr;
+    // const size_t NPAR_PER_NODE = 1;
+    // const size_t NPAR_SHAPE = NPAR_SIDE*NPAR_PER_NODE;
+    const size_t NPAR_SHAPE = 0;
+    Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> par_shape(DOF,NPAR_SHAPE); par_shape.setZero();
+    // {
+    //     for (int j = 0; j<NPAR_SIDE; j++) {
+    //         for (int i = 0; i<m.nP; i++) {
+    //             par_shape(i*2+1,j*NPAR_PER_NODE+0) = Attr(i,j);
+    //         }
+    //     }
+    // }
+
+    // {
+    //     std::vector<std::tuple<std::string, int, std::span<double> > >fields;
+    //     for (int j = 0; j<NPAR_SHAPE; j++) {
+    //         char buf[1024];
+    //         sprintf(buf, "par_%02d", j);
+    //         fields.push_back(std::make_tuple(
+    //             std::string(buf),
+    //             2,
+    //             std::span(par_shape.col(j).data(),par_shape.col(j).size())
+    //         ));
+    //     }
+    //     write_vtu("output/par.vtu", to_span(m.P), to_span(m.T), fields);
+    // }
 
     size_t NPAR_DEPTH=0;
     SpMat par_depth;
     {
         size_t npar=0;
         std::vector<Trip> coef;
-        for (size_t i=0;i<nP;i++) {
-            double x = P(0,i);
+        for (size_t i=0;i<m.nP;i++) {
+            double x = m.P(0,i);
             if ((3<x) && (x<7)) {
                 coef.push_back(Trip(i,npar,1));
                 npar++;
@@ -182,7 +194,7 @@ int main(int argc, char **argv) {
         }
         NPAR_DEPTH = npar;
         printf("depth parameters: %ld (coef.size: %ld)\n", NPAR_DEPTH, coef.size());
-        par_depth.resize(nP,NPAR_DEPTH);
+        par_depth.resize(m.nP,NPAR_DEPTH);
         par_depth.setFromTriplets(coef.begin(), coef.end());
     }
     size_t NPAR = NPAR_SHAPE + NPAR_DEPTH;
@@ -197,9 +209,9 @@ int main(int argc, char **argv) {
         Eigen::Matrix<bool, Eigen::Dynamic, W> ref_b(DOF,W); ref_b.setZero();
         printf("construct graph\n");
         std::vector<std::set<size_t>> graph(DOF);
-        for (size_t i=0;i<nT;i++) {
+        for (size_t i=0;i<m.nT;i++) {
             size_t Ti[3];
-            for (char j=0;j<3;j++) Ti[j] = T(j,i);
+            for (char j=0;j<3;j++) Ti[j] = m.T(j,i);
             for (char j=0;j<3;j++)
                 for (char k=0;k<3;k++)
                     for (char d1=0;d1<DOFperP;d1++)
@@ -244,19 +256,19 @@ int main(int argc, char **argv) {
 
 
     // Pass mesh data as globals to C
-    triangles = T.data();
-    n_triangles = nT;
-    n_points = nP;
-    boundary = B.data();
-    boundary_flag = B_flag.data();
-    n_boundary = nB;
+    triangles = m.T.data();
+    n_triangles = m.nT;
+    n_points = m.nP;
+    boundary = m.B.data();
+    boundary_flag = m.B_flag.data();
+    n_boundary = m.nB;
 
     std::vector<bool> P_bord(DOF);
     for (size_t i=0;i<P_bord.size();i++) P_bord[i] = false;
-    for (size_t i=0;i<nB;i++) {
+    for (size_t i=0;i<m.nB;i++) {
         for (int j=0;j<2;j++)
             for (int k=0;k<2;k++)
-                P_bord[B(j,i)*2+k] = true;
+                P_bord[m.B(j,i)*2+k] = true;
     }
 
     SpMat K(DOF,DOF);
@@ -276,7 +288,7 @@ int main(int argc, char **argv) {
         Eigen::VectorXd Mx(DOF);
         for (size_t k=0; k<maxk; k++) {
             Mx.setZero();
-            morph_energy_b_d(P.data(), P.data(), ref_x.col(k).data(), P1b_tmp.data(), Mx.data(), energy_tmp.data(), energy_weights.data());
+            morph_energy_b_d(m.P.data(), m.P.data(), ref_x.col(k).data(), P1b_tmp.data(), Mx.data(), energy_tmp.data(), energy_weights.data());
             for (size_t j=0; j<DOF; j++){
                 if (fabs(Mx[j]) > 1e-6) {
                     if (! P_bord[j]) {
@@ -328,7 +340,7 @@ int main(int argc, char **argv) {
                 std::span(par_shape.col(j).data(),par_shape.col(j).size())
             ));
         }
-        write_vtu("output/par_morph.vtu", to_span(P), to_span(T), fields);
+        write_vtu("output/par_morph.vtu", to_span(m.P), to_span(m.T), fields);
     }
 
 
@@ -353,15 +365,15 @@ int main(int argc, char **argv) {
             integral_weights(0,i) = weight;
         }
     }
-    Eigen::Matrix<double, 2, Eigen::Dynamic> P0 = P;
-    Eigen::VectorXd D0(nP);
+    Eigen::Matrix<double, 2, Eigen::Dynamic> P0 = m.P;
+    Eigen::VectorXd D0(m.nP);
     for (size_t i=0; i<D0.size(); i++) D0(i) = 1;
 
     int iter = 0;
     const auto& objective = [&](const double *pr_, double* grad_, bool export_all=false) -> double {
         Eigen::Map< const Eigen::VectorXd > pr_shape(pr_, NPAR_SHAPE);
         Eigen::Map< const Eigen::VectorXd > pr_depth(pr_ + NPAR_SHAPE, NPAR_DEPTH);
-        P = P0 + (par_shape * pr_shape).reshaped(2,nP);
+        m.P = P0 + (par_shape * pr_shape).reshaped(2,m.nP);
         //P = P0;
         Eigen::VectorXd D = D0 + par_depth * pr_depth;
         double total_obj = 0;
@@ -372,14 +384,14 @@ int main(int argc, char **argv) {
             total_grad_depth.setZero();
         }
         std::vector<std::pair<double, double> > objs; 
-        for(size_t m = 0; m < KINT; m++) {
-            double wave_k = integral_k(m);
-            Eigen::VectorXd weights = integral_weights.col(m);
+        for(size_t kidx = 0; kidx < KINT; kidx++) {
+            double wave_k = integral_k(kidx);
+            Eigen::VectorXd weights = integral_weights.col(kidx);
             Eigen::VectorXd x(DOF); x.setZero();
             Eigen::VectorXd res(DOF);
             Eigen::VectorXd obj(NOBJ);
 
-            problem(wave_k, P.data(), D.data(), x.data(), res.data(), obj.data());
+            problem(wave_k, m.P.data(), D.data(), x.data(), res.data(), obj.data());
             //printf("obj:%lg\n", obj[0]);
 
             {
@@ -399,7 +411,7 @@ int main(int argc, char **argv) {
                 std::vector<Trip> coef;
                 printf(" [mult]");
                 for (size_t k=0; k<maxk; k++) {
-                    problem_d(wave_k, P.data(), D.data(), x.data(), ref_x.col(k).data(), res_tmp.data(), Mx.data(), obj_tmp.data());
+                    problem_d(wave_k, m.P.data(), D.data(), x.data(), ref_x.col(k).data(), res_tmp.data(), Mx.data(), obj_tmp.data());
                     for (size_t j=0; j<DOF; j++){
                         if (fabs(Mx[j]) > 1e-6) {
                             coef.push_back(Trip(j,ref_j(j,k),Mx[j]));
@@ -425,7 +437,7 @@ int main(int argc, char **argv) {
 
             
 
-            problem(wave_k, P.data(), D.data(), x.data(), res.data(), obj.data());
+            problem(wave_k, m.P.data(), D.data(), x.data(), res.data(), obj.data());
             {
                 double resL2 = res.norm();
                 printf("Residual (after): %lg\n", resL2);
@@ -437,11 +449,11 @@ int main(int argc, char **argv) {
             // ADJOINT
             if (grad_ != NULL) {
                 Eigen::VectorXd Pb(DOF); Pb.setZero();
-                Eigen::VectorXd Db(nP); Db.setZero();
+                Eigen::VectorXd Db(m.nP); Db.setZero();
                 Eigen::VectorXd xb(DOF); xb.setZero();
                 Eigen::VectorXd objb(NOBJ); objb.setZero();
                 objb = weights;
-                problem_bX(wave_k, P.data(), D.data(), x.data(), xb.data(), res_tmp.data(), obj_tmp.data(), objb.data());
+                problem_bX(wave_k, m.P.data(), D.data(), x.data(), xb.data(), res_tmp.data(), obj_tmp.data(), objb.data());
 
                 Eigen::VectorXd resb;
                 {   
@@ -454,17 +466,17 @@ int main(int argc, char **argv) {
                     printf(" [done]\n");
                 }
                 
-                problem_bP(wave_k, P.data(), Pb.data(), D.data(), Db.data(), x.data(), res_tmp.data(), resb.data(), obj_tmp.data(), objb.data());
+                problem_bP(wave_k, m.P.data(), Pb.data(), D.data(), Db.data(), x.data(), res_tmp.data(), resb.data(), obj_tmp.data(), objb.data());
 
                 Eigen::VectorXd grad_shape = Pb.transpose() * par_shape;
                 total_grad_shape += grad_shape;
                 Eigen::VectorXd grad_depth = Db.transpose() * par_depth;
                 total_grad_depth += grad_depth;
             }
-            if (export_all || (m == KINT-1)) {
+            if (export_all || (kidx == KINT-1)) {
                 char buf[1024];
                 sprintf(buf, "output/res_%lg_%04d.vtu", wave_k, iter);
-                write_vtu(buf, to_span(P), to_span(T), {
+                write_vtu(buf, to_span(m.P), to_span(m.T), {
                     std::make_tuple(std::string("Eta"), 2, to_span(x)),
                     std::make_tuple(std::string("depth"), 1, to_span(D))
                 });
@@ -485,7 +497,7 @@ int main(int argc, char **argv) {
         //     sprintf(buf, "output/res_%04d.points", iter);
         //     FILE* f = fopen(buf, "w");
         //     for (size_t i=0;i<nP;i++) {
-        //         fprintf(f, "%.15lg %.15lg\n", P(0,i), P(1,i));
+        //         fprintf(f, "%.15lg %.15lg\n", m.P(0,i), m.P(1,i));
         //     }
         //     fclose(f);
         // }
@@ -493,7 +505,7 @@ int main(int argc, char **argv) {
         //     char buf[1024];
         //     sprintf(buf, "output/mesh_%04d.triangles", iter);
         //     FILE* f = fopen(buf, "w");
-        //     for (size_t i=0;i<nT;i++) {
+        //     for (size_t i=0;i<m.nT;i++) {
         //         fprintf(f, "%ld %ld %ld\n", T[3*i+0], T[3*i+1], T[3*i+2]);
         //     }
         //     fclose(f);
@@ -531,17 +543,9 @@ int main(int argc, char **argv) {
         }, (void*) &objective);
     Eigen::VectorXd lower(NPAR); lower.setZero();
     Eigen::VectorXd upper(NPAR); upper.setZero();
-    for (size_t i=0;i<NPAR_SIDE; i++) {
-        lower(i*NPAR_PER_NODE+0) = -0.2;
-        upper(i*NPAR_PER_NODE+0) =  1.0;
-        // lower(i*NPAR_PER_NODE+0) = -0.01;
-    //     upper(i*NPAR_PER_NODE+0) = 0.01;
-    //     lower(i*NPAR_PER_NODE+1) = -0.2;
-    //     upper(i*NPAR_PER_NODE+1) = 1;
-    //     lower(i*NPAR_PER_NODE+2) = -0.01;
-    //     upper(i*NPAR_PER_NODE+2) = 0.01;
-    //     lower(i*NPAR_PER_NODE+3) = -0.2;
-    //     upper(i*NPAR_PER_NODE+3) = 1;
+    for (size_t i=0;i<NPAR_SHAPE; i++) {
+        lower(i) = -0.2;
+        upper(i) =  1.0;
     }
     for (size_t i=0;i<NPAR_DEPTH; i++) {
         lower(i + NPAR_SHAPE) = -0.5;
