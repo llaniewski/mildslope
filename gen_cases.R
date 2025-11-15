@@ -1,8 +1,7 @@
 write.poly = function(filename, points, segments) {
     f = file(filename,open="w")
-    np = sum(points$par)
-    p = cbind(points$x,points$y,matrix(0,nrow(points),np))
-    p[points$par,-(1:2)] = diag(np)
+    np = 1
+    p = cbind(points$x,points$y,ifelse(points$par,1,0))
     p = cbind(1:nrow(p),p)
     write.table(t(c(nrow(p),2,np,0)), file=f,row.names=FALSE,col.names=FALSE)
     write.table(p, file=f,row.names=FALSE,col.names=FALSE)

@@ -50,30 +50,27 @@ FILE* fopen_safe(std::string fn, char* mode) {
     return f;
 }
 
-int main(int argc, char **argv) {
-    std::vector<std::string> args;
-    for (size_t i = 0;i<argc;i++) args.push_back(argv[i]);
-
+class mesh {
+public:
     size_t nP;
     size_t nT;
     size_t nB;
     size_t nAttr;
+    Eigen::Matrix<double, 2, Eigen::Dynamic> P;
     Eigen::Array<size_t, 3, Eigen::Dynamic> T;
     Eigen::Array<size_t, 2, Eigen::Dynamic> B;
     Eigen::Array<int, Eigen::Dynamic, 1> B_flag;
-    Eigen::Matrix<double, 2, Eigen::Dynamic> P;
     Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> Attr;
-
-    if (args.size() != 2) {
-        fprintf(stderr, "Usage: ./main case\n");
-        exit(2);
+    mesh() {
+        nP = 0;
+        nB = 0;
+        nT = 0;
+        nAttr = 0;        
     }
-    std::string mesh_name = args[1];
-   
-    {
-        std::vector<double> Pv;
-        FILE* f = fopen_safe(mesh_name+".node","rb");
-        int dim, bord;
+    int load_mesh(const std::string& mesh_name) {
+        FILE* f;
+        int dim, bord, el_size, ignore;
+        f = fopen_safe(mesh_name+".node","rb");
         fscanf(f, "%ld %d %ld %d", &nP, &dim, &nAttr, &bord);
         assert(dim == 2);
         P.resize(dim, nP);
@@ -84,14 +81,11 @@ int main(int argc, char **argv) {
             assert(idx == i+1);
             for (int j=0;j<dim;j++) fscanf(f,"%lf", &P(j,i));
             for (size_t j=0;j<nAttr;j++) fscanf(f,"%lf", &Attr(i,j));
-            for (int j=0;j<bord;j++) { int ignore; fscanf(f,"%d", &ignore); }
+            for (int j=0;j<bord;j++) fscanf(f,"%d", &ignore);
         }
         fclose(f);
-    }
-    printf("Points %ld\n", nP);
-    {
-        FILE* f = fopen_safe(mesh_name+".ele","rb");
-        int el_size, bord;
+        printf("Points %ld\n", nP);
+        f = fopen_safe(mesh_name+".ele","rb");
         fscanf(f, "%ld %d %d", &nT, &el_size, &bord);
         assert(el_size == 3);
         T.resize(el_size, nT);
@@ -100,22 +94,21 @@ int main(int argc, char **argv) {
             fscanf(f, "%ld", &idx);
             assert(idx == i+1);
             for (int j=0;j<el_size;j++) { size_t tmp; fscanf(f,"%ld", &tmp); T(j,i) = tmp-1; }
-            for (int j=0;j<bord;j++) { int ignore; fscanf(f,"%d", &ignore); }
+            for (int j=0;j<bord;j++) fscanf(f,"%d", &ignore);
         }
         fclose(f);
-    }
-    printf("Triangles: %ld\n", nT);
-    {
-        FILE* f = fopen_safe(mesh_name+".poly","rb");
-        size_t nP_, nAttr_;
-        int dim_, bord_;
-        fscanf(f, "%ld %d %ld %d", &nP_, &dim_, &nAttr_, &bord_);
-        assert(nP_ == 0);
+        printf("Triangles: %ld\n", nT);
+        f = fopen_safe(mesh_name+".poly","rb");
+        {
+            size_t nP_, nAttr_;
+            int dim_, bord_;
+            fscanf(f, "%ld %d %ld %d", &nP_, &dim_, &nAttr_, &bord_);
+            assert(nP_ == 0);
+        }
         const int edge_size = 2;
-        int bord;
         fscanf(f, "%ld %d", &nB, &bord);        
         assert(bord == 1);
-        B.resize(2, nB);
+        B.resize(edge_size, nB);
         B_flag.resize(nB, bord);
         for (size_t i=0;i<nB;i++) {
             size_t idx;
@@ -125,13 +118,30 @@ int main(int argc, char **argv) {
             for (int j=0;j<bord;j++) fscanf(f,"%d", &B_flag(i,j));
         }
         fclose(f);
+        printf("Border: %ld\n", nB);
+        return 0;
     }
-    printf("Border: %ld\n", nB);
+};
 
+int main(int argc, char **argv) {
+    std::vector<std::string> args;
+    for (size_t i = 0;i<argc;i++) args.push_back(argv[i]);
+
+    if (args.size() != 2) {
+        fprintf(stderr, "Usage: ./main case\n");
+        exit(2);
+    }
+    std::string mesh_name = args[1];
+
+    mesh m;
+
+    m.read_mesh(mesh_name);
 
     const size_t DOFperP = 2;
-    const size_t DOF = nP*DOFperP;
+    const size_t DOF = m.nP*DOFperP;
 
+
+    
     size_t NPAR_SIDE = nAttr;
     const size_t NPAR_PER_NODE = 1;
     const size_t NPAR_SHAPE = NPAR_SIDE*NPAR_PER_NODE;
@@ -322,7 +332,7 @@ int main(int argc, char **argv) {
     }
 
 
-    return 0;
+//    return 0;
 
     // problem coefficient
     //double wave_k = 4.0;
