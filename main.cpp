@@ -137,17 +137,6 @@ int main(int argc, char **argv) {
 
     m.read_mesh(mesh_name);
 
-    {
-        std::map<size_t, std::vector< Eigen::Vector2d > > bvec;
-        for (size_t i=0; i<m.nB; i++) {
-            size_t i0 = m.B(0,i);
-            size_t i1 = m.B(1,i);
-            Eigen::Vector2d p0 = m.P.col(i0);
-            Eigen::Vector2d p1 = m.P.col(i1);
-            bvec[i].push_back(p1-p0);
-        }
-    }
-
     const size_t DOFperP = 2;
     const size_t DOF = m.nP*DOFperP;
 
@@ -264,11 +253,32 @@ int main(int argc, char **argv) {
     n_boundary = m.nB;
 
     std::vector<bool> P_bord(DOF);
+    std::map<size_t, std::vector< Eigen::Vector2d > > bvec;
     for (size_t i=0;i<P_bord.size();i++) P_bord[i] = false;
     for (size_t i=0;i<m.nB;i++) {
+        size_t i0 = m.B(0,i);
+        size_t i1 = m.B(1,i);
+        Eigen::Vector2d p0 = m.P.col(i0);
+        Eigen::Vector2d p1 = m.P.col(i1);
+        Eigen::Vector2d v = p1 - p0;
+        v.normalize();
+        double tmp = v(1); v(1) = -v(0); v(0) = tmp;
+        bvec[i0].push_back(v);
+        bvec[i1].push_back(v);
         for (int j=0;j<2;j++)
             for (int k=0;k<2;k++)
                 P_bord[m.B(j,i)*2+k] = true;
+    }
+
+    for (auto & [i, vecs] : bvec) {
+        assert(vecs.size() == 2);
+        Eigen::Vector2d v0 = vecs[0];
+        Eigen::Vector2d v1 = vecs[1];
+        Eigen::Vector2d w = v0 + v1;
+        w.normalize();
+        Eigen::Vector2d v = w;
+        double tmp = v(1); v(1) = -v(0); v(0) = tmp;
+
     }
 
     SpMat K(DOF,DOF);
