@@ -4,6 +4,7 @@
 *.node
 *_d.c
 *_b.c
+*_g.c
 *~
 *.msg
 *.csv

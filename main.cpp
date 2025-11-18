@@ -29,7 +29,7 @@ extern "C" {
     void problem_bX(double wave_k, const double *points, const double *depth, const double *x, double *xb, double *res, double *obj, double *objb);
     void morph_energy_fix(const double *P0, const double *P1, const double *Pfix, double *res, double *energy, double *energyb);
     void morph_energy_fix_d(const double *P0, const double *P1, const double *P1d, const double *Pfix, double *res, double *resd, double *energyb);
-    void morph_energy_fix_b(const double *P0, const double *P1, const double *Pfix, double *Pfixb, double *res, double *resb, double *energyb)
+    void morph_energy_fix_b(const double *P0, const double *P1, const double *Pfix, double *Pfixb, double *res, double *resb, double *energyb);
 }
 
 typedef Eigen::SparseMatrix<double> SpMat;
@@ -141,6 +141,7 @@ int main(int argc, char **argv) {
     const size_t DOFperP = 2;
     const size_t DOF = m.nP*DOFperP;
 
+    Eigen::VectorXd Pfix(DOF);
 
 
     // size_t NPAR_SIDE = nAttr;

@@ -6,7 +6,7 @@ CXXFLAGS+=-Wno-unused-result -Wno-write-strings
 # CFLAGS+=-g
 TAPENADE=$(HOME)/tapenade/tapenade_3.16/bin/tapenade
 
-main: main.o vtu_write.o solve.o problem.o problem_d.o problem_b.o morph_energy_fix_d.o morph_energy_fix_b.o
+main: main.o vtu_write.o solve.o problem.o problem_d.o problem_b.o morph_energy_fix_g_d.o morph_energy_fix_g_b.o
 	$(CXX) $(CXXFLAGS) -o $@ $^ -lklu -lnlopt
 
 problem_d.c : problem.c
@@ -22,13 +22,13 @@ morph_energy_b.c : morph_energy.c
 	sed -e '/adStack/s|^|//|' -i $@
 	./ADmod.R -f $@ -o $@
 
-morph_energy_fix.c : morph_energy_b.c morph_energy_fix.inc.c
+morph_energy_fix_g.c : morph_energy_b.c morph_energy_fix.c
 	cat $^ >$@
 
-morph_energy_fix_d.c : morph_energy_fix.c 
+morph_energy_fix_g_d.c : morph_energy_fix_g.c 
 	$(TAPENADE) -fixinterface -d -head 'morph_energy_fix(res)/(P1)' -head 'morph_energy_fix[F](res)/(Pfix)' $<
 
-morph_energy_fix_b.c : morph_energy_fix.c
+morph_energy_fix_g_b.c : morph_energy_fix_g.c
 	$(TAPENADE) -fixinterface -b -head 'morph_energy_fix(res)/(Pfix)' $<
 	sed -e '/adStack/s|^|//|' -i $@
 	./ADmod.R -f $@ -o $@
