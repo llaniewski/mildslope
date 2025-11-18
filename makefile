@@ -29,6 +29,6 @@ morph_energy_fix_g_d.c : morph_energy_fix_g.c
 	$(TAPENADE) -fixinterface -d -head 'morph_energy_fix(res)/(P1)' -head 'morph_energy_fix[F](res)/(Pfix)' $<
 
 morph_energy_fix_g_b.c : morph_energy_fix_g.c
-	$(TAPENADE) -fixinterface -b -head 'morph_energy_fix(res)/(Pfix)' $<
+	$(TAPENADE) -fixinterface -b -head 'morph_energy_fix(res)/(Pfix)' -copyname "_nodiff2" $<
 	sed -e '/adStack/s|^|//|' -i $@
 	./ADmod.R -f $@ -o $@

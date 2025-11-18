@@ -21,7 +21,11 @@ size_t n_points;
 size_t * boundary;
 int * boundary_flag;
 size_t n_boundary;
-double * fix;
+size_t n_bord;
+size_t* bord;
+double* fix;
+double* fix_dirs;
+
 extern "C" {
     void problem(double wave_k, const double *points, const double *depth, const double* x, double* res, double* obj);
     void problem_d(double wave_k, const double *points, const double *depth, const double *x, const double *xd, double *res, double *resd, double *obj);
@@ -254,7 +258,7 @@ int main(int argc, char **argv) {
     boundary_flag = m.B_flag.data();
     n_boundary = m.nB;
 
-    std::vector<bool> P_bord(DOF);
+    std::vector<bool> P_bord(m.nP);
     std::map<size_t, std::vector< Eigen::Vector2d > > bvec;
     for (size_t i=0;i<P_bord.size();i++) P_bord[i] = false;
     for (size_t i=0;i<m.nB;i++) {
@@ -267,12 +271,16 @@ int main(int argc, char **argv) {
         double tmp = v(1); v(1) = -v(0); v(0) = tmp;
         bvec[i0].push_back(v);
         bvec[i1].push_back(v);
-        for (int j=0;j<2;j++)
-            for (int k=0;k<2;k++)
-                P_bord[m.B(j,i)*2+k] = true;
+        P_bord[i0] = true;
+        P_bord[i1] = true;
     }
 
+    Eigen::Array<size_t, Eigen::Dynamic, 1> boder_indexes;
+    Eigen::Matrix<double, 4, Eigen::Dynamic> border_directions;
+    Eigen::Matrix<double, 2, Eigen::Dynamic> border_coef;
+
     for (auto & [i, vecs] : bvec) {
+        //printf("%ld\n",i);
         assert(vecs.size() == 2);
         Eigen::Vector2d v0 = vecs[0];
         Eigen::Vector2d v1 = vecs[1];
@@ -282,6 +290,8 @@ int main(int argc, char **argv) {
         double tmp = v(1); v(1) = -v(0); v(0) = tmp;
 
     }
+
+    return 0;
 
     SpMat K(DOF,DOF);
     {
