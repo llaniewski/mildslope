@@ -275,20 +275,33 @@ int main(int argc, char **argv) {
         P_bord[i1] = true;
     }
 
-    Eigen::Array<size_t, Eigen::Dynamic, 1> boder_indexes;
-    Eigen::Matrix<double, 4, Eigen::Dynamic> border_directions;
-    Eigen::Matrix<double, 2, Eigen::Dynamic> border_coef;
+    size_t nBP = 0;
+    for (size_t i=0;i<m.nP;i++) if (P_bord[i]) nBP++;
+    Eigen::Array<size_t, Eigen::Dynamic, 1> boder_indexes(nBP,1);
+    Eigen::Matrix<double, 4, Eigen::Dynamic> border_directions(4,nBP);
+    Eigen::Matrix<double, 2, Eigen::Dynamic> border_coef(2,nBP);
 
-    for (auto & [i, vecs] : bvec) {
-        //printf("%ld\n",i);
-        assert(vecs.size() == 2);
-        Eigen::Vector2d v0 = vecs[0];
-        Eigen::Vector2d v1 = vecs[1];
-        Eigen::Vector2d w = v0 + v1;
-        w.normalize();
-        Eigen::Vector2d v = w;
-        double tmp = v(1); v(1) = -v(0); v(0) = tmp;
-
+    {
+        size_t j = 0;
+        for (size_t i=0;i<m.nP;i++) if (P_bord[i]) {
+            boder_indexes(j) = i;
+            std::vector< Eigen::Vector2d > vecs = bvec[i];
+            assert(vecs.size() == 2);
+            Eigen::Vector2d v0 = vecs[0];
+            Eigen::Vector2d v1 = vecs[1];
+            Eigen::Vector2d w = v0 + v1;
+            w.normalize();
+            Eigen::Vector2d v = w;
+            double tmp = v(1); v(1) = -v(0); v(0) = tmp;
+            border_directions(0,j) = w(0);
+            border_directions(1,j) = w(1);
+            border_directions(2,j) = v(0);
+            border_directions(3,j) = v(1);
+            border_coef(0,j) = 1;
+            border_coef(1,j) = 1;
+            j++;
+        }
+        assert(j == nBP);
     }
 
     return 0;
