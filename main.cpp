@@ -267,7 +267,7 @@ int main(int argc, char **argv) {
         Eigen::Vector2d p0 = m.P.col(i0);
         Eigen::Vector2d p1 = m.P.col(i1);
         Eigen::Vector2d v = p1 - p0;
-        v.normalize();
+        //v.normalize();
         double tmp = v(1); v(1) = -v(0); v(0) = tmp;
         bvec[i0].push_back(v);
         bvec[i1].push_back(v);
@@ -277,14 +277,14 @@ int main(int argc, char **argv) {
 
     size_t nBP = 0;
     for (size_t i=0;i<m.nP;i++) if (P_bord[i]) nBP++;
-    Eigen::Array<size_t, Eigen::Dynamic, 1> boder_indexes(nBP,1);
+    Eigen::Array<size_t, Eigen::Dynamic, 1> border_indexes(nBP,1);
     Eigen::Matrix<double, 4, Eigen::Dynamic> border_directions(4,nBP);
     Eigen::Matrix<double, 2, Eigen::Dynamic> border_coef(2,nBP);
 
     {
         size_t j = 0;
         for (size_t i=0;i<m.nP;i++) if (P_bord[i]) {
-            boder_indexes(j) = i;
+            border_indexes(j) = i;
             std::vector< Eigen::Vector2d > vecs = bvec[i];
             assert(vecs.size() == 2);
             Eigen::Vector2d v0 = vecs[0];
@@ -293,6 +293,7 @@ int main(int argc, char **argv) {
             w.normalize();
             Eigen::Vector2d v = w;
             double tmp = v(1); v(1) = -v(0); v(0) = tmp;
+            v = v0; w = v1;
             border_directions(0,j) = w(0);
             border_directions(1,j) = w(1);
             border_directions(2,j) = v(0);
@@ -302,6 +303,30 @@ int main(int argc, char **argv) {
             j++;
         }
         assert(j == nBP);
+    }
+
+    {
+        std::vector<std::tuple<std::string, int, std::span<double> > >fields;
+        Eigen::Matrix<double, 3, Eigen::Dynamic> v1(3,m.nP); v1.setZero();
+        Eigen::Matrix<double, 3, Eigen::Dynamic> v2(3,m.nP); v2.setZero();
+        for (size_t i=0;i<nBP;i++)  {
+            size_t j = border_indexes[i];
+            v1(0,j) = border_directions(0,i);
+            v1(1,j) = border_directions(1,i);
+            v2(0,j) = border_directions(2,i);
+            v2(1,j) = border_directions(3,i);
+        }
+        fields.push_back(std::make_tuple(
+            "v1",
+            3,
+            std::span(v1.data(),v1.size())
+        ));
+        fields.push_back(std::make_tuple(
+            "v2",
+            3,
+            std::span(v2.data(),v2.size())
+        ));
+        write_vtu("output/bord.vtu", to_span(m.P), to_span(m.T), fields);
     }
 
     return 0;
