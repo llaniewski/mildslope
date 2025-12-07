@@ -258,53 +258,83 @@ int main(int argc, char **argv) {
     boundary_flag = m.B_flag.data();
     n_boundary = m.nB;
 
-    std::vector<bool> P_bord(m.nP);
-    std::map<size_t, std::vector< Eigen::Vector2d > > bvec;
-    for (size_t i=0;i<P_bord.size();i++) P_bord[i] = false;
-    for (size_t i=0;i<m.nB;i++) {
-        size_t i0 = m.B(0,i);
-        size_t i1 = m.B(1,i);
-        Eigen::Vector2d p0 = m.P.col(i0);
-        Eigen::Vector2d p1 = m.P.col(i1);
-        Eigen::Vector2d v = p1 - p0;
-        //v.normalize();
-        double tmp = v(1); v(1) = -v(0); v(0) = tmp;
-        bvec[i0].push_back(v);
-        bvec[i1].push_back(v);
-        P_bord[i0] = true;
-        P_bord[i1] = true;
-    }
-
     size_t nBP = 0;
-    for (size_t i=0;i<m.nP;i++) if (P_bord[i]) nBP++;
-    Eigen::Array<size_t, Eigen::Dynamic, 1> border_indexes(nBP,1);
-    Eigen::Matrix<double, 4, Eigen::Dynamic> border_directions(4,nBP);
-    Eigen::Matrix<double, 2, Eigen::Dynamic> border_coef(2,nBP);
-
+    Eigen::Array<size_t, Eigen::Dynamic, 1> border_indexes;
+    Eigen::Matrix<double, 4, Eigen::Dynamic> border_directions;
+    Eigen::Matrix<double, 2, Eigen::Dynamic> border_coef;
     {
+        std::vector<bool> P_bord(m.nP);
+        std::map<size_t, std::vector< Eigen::Vector2d > > bvec;
+        std::set< std::array< size_t, 2 > > bpairs;
+        for (size_t i=0;i<P_bord.size();i++) P_bord[i] = false;
+        for (size_t i=0;i<m.nB;i++) {
+            size_t i0 = m.B(0,i);
+            size_t i1 = m.B(1,i);
+            P_bord[i0] = true;
+            P_bord[i1] = true;
+            bpairs.emplace(std::array<size_t, 2>{i0, i1});
+        }
+        for (size_t i=0;i<m.nT;i++) {
+            size_t i0 = m.T(0,i);
+            size_t i1 = m.T(1,i);
+            size_t i2 = m.T(2,i);
+            auto fun = [&](size_t j0, size_t j1, size_t j2) {
+                if (bpairs.count({j0,j1}) + bpairs.count({j1,j0}) == 0) return;
+                Eigen::Vector2d p0 = m.P.col(j0);
+                Eigen::Vector2d p1 = m.P.col(j1);
+                Eigen::Vector2d p2 = m.P.col(j2);
+                Eigen::Vector2d v = p1 - p0;
+                //v.normalize();
+                double tmp = v(1); v(1) = -v(0); v(0) = tmp;
+                Eigen::Vector2d w = p2 - p0;
+                if (v.dot(w) > 0.0) v = -v;
+                bvec[j0].push_back(v);
+                bvec[j1].push_back(v);
+            };
+            fun(i0,i1,i2);
+            fun(i1,i2,i0);
+            fun(i2,i0,i1);
+        }
+
+        for (size_t i=0;i<m.nP;i++) if (P_bord[i]) nBP++;
+        border_indexes.resize(nBP,1);
+        border_directions.resize(4,nBP);
+        border_coef.resize(2,nBP);
+        
         size_t j = 0;
         for (size_t i=0;i<m.nP;i++) if (P_bord[i]) {
             border_indexes(j) = i;
             std::vector< Eigen::Vector2d > vecs = bvec[i];
+            if (vecs.size() != 2) {
+                printf("Number of normal vectors for %ld is %ld\n", i, vecs.size());
+            }
             assert(vecs.size() == 2);
             Eigen::Vector2d v0 = vecs[0];
             Eigen::Vector2d v1 = vecs[1];
-            Eigen::Vector2d w = v0 + v1;
-            w.normalize();
-            Eigen::Vector2d v = w;
-            double tmp = v(1); v(1) = -v(0); v(0) = tmp;
-            v = v0; w = v1;
-            border_directions(0,j) = w(0);
-            border_directions(1,j) = w(1);
-            border_directions(2,j) = v(0);
-            border_directions(3,j) = v(1);
-            border_coef(0,j) = 1;
-            border_coef(1,j) = 1;
+            //double skal = v0.dot(v1);
+            //if (skal < 0) v1 = -v1;
+            Eigen::Vector2d w0 = v0 + v1;
+            w0.normalize();
+            Eigen::Vector2d w1 = w0;
+            double tmp = w1(1); w1(1) = -w1(0); w1(0) = tmp;
+            v0.normalize();
+            v1.normalize();
+            double cr = v0(0)*v1(1) - v0(1)*v1(0);
+            double c0 = 1;
+            double c1 = fabs(cr);
+            w0 = w0 * c0;
+            w1 = w1 * c1;
+            //v = v0; w = v1;
+            border_directions(0,j) = w0(0);
+            border_directions(1,j) = w0(1);
+            border_directions(2,j) = w1(0);
+            border_directions(3,j) = w1(1);
+            border_coef(0,j) = c0;
+            border_coef(1,j) = c1;
             j++;
         }
         assert(j == nBP);
     }
-
     {
         std::vector<std::tuple<std::string, int, std::span<double> > >fields;
         Eigen::Matrix<double, 3, Eigen::Dynamic> v1(3,m.nP); v1.setZero();
@@ -361,13 +391,13 @@ int main(int argc, char **argv) {
     }
 
     {
-        for (size_t i=0; i<DOF; i++) {
-            for (int j = 0; j<NPAR_SHAPE; j++) {
-                if (!P_bord[i]){
-                    par_shape(i,j) = 0;
-                }                
-            }
-        }
+        // for (size_t i=0; i<DOF; i++) {
+        //     for (int j = 0; j<NPAR_SHAPE; j++) {
+        //         if (!P_bord[i]){
+        //             par_shape(i,j) = 0;
+        //         }                
+        //     }
+        // }
         printf("Solving linear problem");
         Eigen::KLU<SpMat> solver;  // performs a Cholesky factorization of A
         printf(" [compute]");
