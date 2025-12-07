@@ -26,9 +26,9 @@ morph_energy_fix_g.c : morph_energy_b.c morph_energy_fix.c
 	cat $^ >$@
 
 morph_energy_fix_g_d.c : morph_energy_fix_g.c 
-	$(TAPENADE) -fixinterface -d -head 'morph_energy_fix(res)/(P1)' -head 'morph_energy_fix[F](res)/(Pfix)' $<
+	$(TAPENADE) -fixinterface -d -head 'morph_energy_fix(res)/(P1)' -head 'morph_energy_fix[F](res)/(dir_disp)' $<
 
 morph_energy_fix_g_b.c : morph_energy_fix_g.c
-	$(TAPENADE) -fixinterface -b -head 'morph_energy_fix(res)/(Pfix)' -copyname "_nodiff2" $<
+	$(TAPENADE) -fixinterface -b -head 'morph_energy_fix(res)/(dir_disp)' -copyname "_nodiff2" $<
 	sed -e '/adStack/s|^|//|' -i $@
 	./ADmod.R -f $@ -o $@

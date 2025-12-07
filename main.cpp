@@ -31,9 +31,9 @@ extern "C" {
     void problem_d(double wave_k, const double *points, const double *depth, const double *x, const double *xd, double *res, double *resd, double *obj);
     void problem_bP(double wave_k, const double *points, double *pointsb, const double *depth, const double *depthb, const double *x, double *res, double *resb, double *obj, double *objb);
     void problem_bX(double wave_k, const double *points, const double *depth, const double *x, double *xb, double *res, double *obj, double *objb);
-    void morph_energy_fix(const double *P0, const double *P1, const double *Pfix, double *res, double *energy, double *energyb);
-    void morph_energy_fix_d(const double *P0, const double *P1, const double *P1d, const double *Pfix, double *res, double *resd, double *energyb);
-    void morph_energy_fix_b(const double *P0, const double *P1, const double *Pfix, double *Pfixb, double *res, double *resb, double *energyb);
+    void morph_energy_fix(const double *P0, const double *P1, const double *dir_disp, double *res, double *energyb);
+    void morph_energy_fix_d(const double *P0, const double *P1, const double *P1d, const double *dir_disp, double *res, double *resd, double *energyb);
+    void morph_energy_fix_b(const double *P0, const double *P1, const double *dir_disp, double *dir_dispb, double *res, double *resb, double *energyb);
 }
 
 typedef Eigen::SparseMatrix<double> SpMat;
@@ -260,8 +260,12 @@ int main(int argc, char **argv) {
 
     size_t nBP = 0;
     Eigen::Array<size_t, Eigen::Dynamic, 1> border_indexes;
-    Eigen::Matrix<double, 4, Eigen::Dynamic> border_directions;
-    Eigen::Matrix<double, 2, Eigen::Dynamic> border_coef;
+    Eigen::Matrix<double, 2, Eigen::Dynamic> border_directions;
+    Eigen::Matrix<double, Eigen::Dynamic,1 > border_skal;
+    Eigen::Matrix<double, Eigen::Dynamic,2 > border_fix;
+    size_t nPar_shape = 0;
+    SpMat ParMat;
+    Eigen::Matrix<double, Eigen::Dynamic, 2> par_shape_limits;
     {
         std::vector<bool> P_bord(m.nP);
         std::map<size_t, std::vector< Eigen::Vector2d > > bvec;
@@ -298,9 +302,11 @@ int main(int argc, char **argv) {
 
         for (size_t i=0;i<m.nP;i++) if (P_bord[i]) nBP++;
         border_indexes.resize(nBP,1);
-        border_directions.resize(4,nBP);
-        border_coef.resize(2,nBP);
+        border_directions.resize(2,nBP);
+        border_skal.resize(nBP,1);
+        border_fix.resize(nBP,2);
         
+        std::vector< std::tuple< size_t, double, double > > shape_par;
         size_t j = 0;
         for (size_t i=0;i<m.nP;i++) if (P_bord[i]) {
             border_indexes(j) = i;
@@ -311,55 +317,101 @@ int main(int argc, char **argv) {
             assert(vecs.size() == 2);
             Eigen::Vector2d v0 = vecs[0];
             Eigen::Vector2d v1 = vecs[1];
-            //double skal = v0.dot(v1);
-            //if (skal < 0) v1 = -v1;
             Eigen::Vector2d w0 = v0 + v1;
             w0.normalize();
-            Eigen::Vector2d w1 = w0;
-            double tmp = w1(1); w1(1) = -w1(0); w1(0) = tmp;
+
             v0.normalize();
             v1.normalize();
-            double cr = v0(0)*v1(1) - v0(1)*v1(0);
-            double c0 = 1;
-            double c1 = fabs(cr);
-            w0 = w0 * c0;
-            w1 = w1 * c1;
-            //v = v0; w = v1;
+            double skal = v0.dot(v1);
             border_directions(0,j) = w0(0);
             border_directions(1,j) = w0(1);
-            border_directions(2,j) = w1(0);
-            border_directions(3,j) = w1(1);
-            border_coef(0,j) = c0;
-            border_coef(1,j) = c1;
+            border_skal(j) = skal;
+            border_fix(0,j) = 1.0;
+            border_fix(1,j) = 1.0;
+
+            double outer, inner, sides;
+            if (m.nAttr > 0) outer = m.Attr(i,0); else outer = 1;
+            if (m.nAttr > 1) inner = m.Attr(i,1); else inner = -outer;
+            if (m.nAttr > 2) sides = m.Attr(i,2); else sides = 0.2*(outer-inner);
+            assert(inner <= outer);
+            if (outer-inner > 1e-6) {
+                shape_par.push_back(std::make_tuple(2*j+0,inner,outer));
+                if (fabs(skal) > 0.5) {
+                    shape_par.push_back(std::make_tuple(2*j+1,-sides,sides));
+                } else {
+                    border_fix(1,j) = 0.0;
+                }
+            }
             j++;
         }
         assert(j == nBP);
+        nPar_shape = shape_par.size();
+        ParMat.resize(nBP*2, nPar_shape);
+        par_shape_limits.resize(nPar_shape,2);
+        {
+            std::vector<Trip> coef;
+            for (size_t i=0; i<nPar_shape; i++) {
+                size_t idx = std::get<0>(shape_par[i]);
+                double lower = std::get<1>(shape_par[i]);
+                double upper = std::get<2>(shape_par[i]);
+                coef.push_back(Trip(idx,i,1));
+                par_shape_limits(i,0) = lower;
+                par_shape_limits(i,1) = upper;
+            }
+            ParMat.setFromTriplets(coef.begin(), coef.end());
+        }
+
     }
+
     {
         std::vector<std::tuple<std::string, int, std::span<double> > >fields;
         Eigen::Matrix<double, 3, Eigen::Dynamic> v1(3,m.nP); v1.setZero();
-        Eigen::Matrix<double, 3, Eigen::Dynamic> v2(3,m.nP); v2.setZero();
+        Eigen::Matrix<double, Eigen::Dynamic, 1> skal(m.nP); skal.setZero();
+        Eigen::Matrix<double, Eigen::Dynamic, 1> fix0(m.nP); fix0.setZero();
+        Eigen::Matrix<double, Eigen::Dynamic, 1> fix1(m.nP); fix1.setZero();
         for (size_t i=0;i<nBP;i++)  {
             size_t j = border_indexes[i];
             v1(0,j) = border_directions(0,i);
             v1(1,j) = border_directions(1,i);
-            v2(0,j) = border_directions(2,i);
-            v2(1,j) = border_directions(3,i);
+            skal(j) = border_skal(i);
+            fix0(j) = border_fix(0,j);
+            fix1(j) = border_fix(1,j);
         }
         fields.push_back(std::make_tuple(
             "v1",
             3,
             std::span(v1.data(),v1.size())
         ));
-        fields.push_back(std::make_tuple(
-            "v2",
-            3,
-            std::span(v2.data(),v2.size())
-        ));
+        fields.push_back(std::make_tuple("skal", 1, to_span(skal)));
+        fields.push_back(std::make_tuple("fix0", 1, to_span(fix0)));
+        fields.push_back(std::make_tuple("fix1", 1, to_span(fix1)));
         write_vtu("output/bord.vtu", to_span(m.P), to_span(m.T), fields);
     }
 
     return 0;
+
+    n_bord = nBP;
+    bord = border_indexes.data();
+    fix_dirs = border_directions.data();
+    fix = border_fix.data();
+
+    double YoungMod = 1.0;
+    double Poiss = 0.4;
+    Eigen::VectorXd energy_weights(2);
+    // energy_weights(0) = YoungMod*Poiss/((1+Poiss)*(1-2*Poiss)); //(tr(E))^2
+    // energy_weights(1) = 2*YoungMod/(2*(1+Poiss)); // tr(E^2)
+    energy_weights(0) = Poiss; //(tr(E))^2
+    energy_weights(1) = (1-2*Poiss); // tr(E^2)
+
+    Eigen::Matrix<double, 2, Eigen::Dynamic> dir_disp(2, nBP);
+    Eigen::Matrix<double, 2, Eigen::Dynamic> P1 = m.P;
+    Eigen::Matrix<double, 2, Eigen::Dynamic> res(2, m.nP);
+
+    morph_energy_fix(m.P.data(), P1.data(), dir_disp.data(), res.data(), energy_weights.data());
+    {
+        double resL2 = res.norm();
+        printf("Residual (before): %lg\n", resL2);
+    }
 
     SpMat K(DOF,DOF);
     {
@@ -368,13 +420,7 @@ int main(int argc, char **argv) {
         printf(" [mult]");
         Eigen::VectorXd P1b_tmp(DOF);
         Eigen::VectorXd energy_tmp(2);
-        Eigen::VectorXd energy_weights(2);
-        double YoungMod = 1.0;
-        double Poiss = 0.4;
-        // energy_weights(0) = YoungMod*Poiss/((1+Poiss)*(1-2*Poiss)); //(tr(E))^2
-        // energy_weights(1) = 2*YoungMod/(2*(1+Poiss)); // tr(E^2)
-        energy_weights(0) = Poiss; //(tr(E))^2
-        energy_weights(1) = (1-2*Poiss); // tr(E^2)
+        
         Eigen::VectorXd Mx(DOF);
         for (size_t k=0; k<maxk; k++) {
             Mx.setZero();
@@ -410,7 +456,7 @@ int main(int argc, char **argv) {
         printf(" [done]\n");
     }
     
-
+    return 0;
     {
         std::vector<std::tuple<std::string, int, std::span<double> > >fields;
         for (int j = 0; j<NPAR_SHAPE; j++) {
