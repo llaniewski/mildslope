@@ -16,8 +16,8 @@ void morph_energy_fix(const double *P0, const double *P1, const double *dir_disp
         size_t iy = idx*2 + 1;
         double vx = fix_dirs[i*2+0];
         double vy = fix_dirs[i*2+1];
-        double dispx = P0[ix] - P1[ix];
-        double dispy = P0[iy] - P1[iy];
+        double dispx = P1[ix] - P0[ix];
+        double dispy = P1[iy] - P0[iy];
         double disp0 = dispx*vx + dispy*vy;
         double disp1 = -dispx*vy + dispy*vx;
         double res0 = res[ix]*vx + res[iy]*vy;
@@ -25,6 +25,6 @@ void morph_energy_fix(const double *P0, const double *P1, const double *dir_disp
         res0 = res0 * (1-fix[2*i+0]) + (disp0 - dir_disp[2*i+0]) * fix[2*i+0];
         res1 = res1 * (1-fix[2*i+1]) + (disp1 - dir_disp[2*i+1]) * fix[2*i+1];
         res[ix] = res0*vx - res1*vy;
-        res[ix] = res0*vy + res1*vx;
+        res[iy] = res0*vy + res1*vx;
     }
 }

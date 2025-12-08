@@ -6,7 +6,7 @@ CXXFLAGS+=-Wno-unused-result -Wno-write-strings
 # CFLAGS+=-g
 TAPENADE=$(HOME)/tapenade/tapenade_3.16/bin/tapenade
 
-main: main.o vtu_write.o solve.o problem.o problem_d.o problem_b.o morph_energy_fix_g_d.o morph_energy_fix_g_b.o
+main: main.o vtu_write.o solve.o problem.o problem_d.o problem_b.o morph_energy_fix_g_d.o morph_energy_fix_g_b.o morph_energy_fix_g.o
 	$(CXX) $(CXXFLAGS) -o $@ $^ -lklu -lnlopt
 
 problem_d.c : problem.c

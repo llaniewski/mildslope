@@ -145,38 +145,11 @@ int main(int argc, char **argv) {
     const size_t DOFperP = 2;
     const size_t DOF = m.nP*DOFperP;
 
-    Eigen::VectorXd Pfix(DOF);
-
-
-    // size_t NPAR_SIDE = nAttr;
-    // const size_t NPAR_PER_NODE = 1;
-    // const size_t NPAR_SHAPE = NPAR_SIDE*NPAR_PER_NODE;
-    const size_t NPAR_SHAPE = 0;
-    Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> par_shape(DOF,NPAR_SHAPE); par_shape.setZero();
-    // {
-    //     for (int j = 0; j<NPAR_SIDE; j++) {
-    //         for (int i = 0; i<m.nP; i++) {
-    //             par_shape(i*2+1,j*NPAR_PER_NODE+0) = Attr(i,j);
-    //         }
-    //     }
-    // }
-
-    // {
-    //     std::vector<std::tuple<std::string, int, std::span<double> > >fields;
-    //     for (int j = 0; j<NPAR_SHAPE; j++) {
-    //         char buf[1024];
-    //         sprintf(buf, "par_%02d", j);
-    //         fields.push_back(std::make_tuple(
-    //             std::string(buf),
-    //             2,
-    //             std::span(par_shape.col(j).data(),par_shape.col(j).size())
-    //         ));
-    //     }
-    //     write_vtu("output/par.vtu", to_span(m.P), to_span(m.T), fields);
-    // }
-
     size_t NPAR_DEPTH=0;
     SpMat par_depth;
+    size_t NPAR_SHAPE = 0;
+    SpMat par_shape;
+
     {
         size_t npar=0;
         std::vector<Trip> coef;
@@ -192,7 +165,6 @@ int main(int argc, char **argv) {
         par_depth.resize(m.nP,NPAR_DEPTH);
         par_depth.setFromTriplets(coef.begin(), coef.end());
     }
-    size_t NPAR = NPAR_SHAPE + NPAR_DEPTH;
 
     // Graph coloring
     const size_t W = 40;
@@ -262,9 +234,7 @@ int main(int argc, char **argv) {
     Eigen::Array<size_t, Eigen::Dynamic, 1> border_indexes;
     Eigen::Matrix<double, 2, Eigen::Dynamic> border_directions;
     Eigen::Matrix<double, Eigen::Dynamic,1 > border_skal;
-    Eigen::Matrix<double, Eigen::Dynamic,2 > border_fix;
-    size_t nPar_shape = 0;
-    SpMat ParMat;
+    Eigen::Matrix<double, 2, Eigen::Dynamic > border_fix;
     Eigen::Matrix<double, Eigen::Dynamic, 2> par_shape_limits;
     {
         std::vector<bool> P_bord(m.nP);
@@ -304,7 +274,7 @@ int main(int argc, char **argv) {
         border_indexes.resize(nBP,1);
         border_directions.resize(2,nBP);
         border_skal.resize(nBP,1);
-        border_fix.resize(nBP,2);
+        border_fix.resize(2,nBP);
         
         std::vector< std::tuple< size_t, double, double > > shape_par;
         size_t j = 0;
@@ -333,24 +303,24 @@ int main(int argc, char **argv) {
             if (m.nAttr > 0) outer = m.Attr(i,0); else outer = 1;
             if (m.nAttr > 1) inner = m.Attr(i,1); else inner = -outer;
             if (m.nAttr > 2) sides = m.Attr(i,2); else sides = 0.2*(outer-inner);
-            assert(inner <= outer);
-            if (outer-inner > 1e-6) {
+            assert(outer - inner > -1e-6);
+            if (outer - inner > 1e-6) {
                 shape_par.push_back(std::make_tuple(2*j+0,inner,outer));
-                if (fabs(skal) > 0.5) {
+                if (fabs(skal) < 0.5) {
                     shape_par.push_back(std::make_tuple(2*j+1,-sides,sides));
                 } else {
-                    border_fix(1,j) = 0.0;
+                    //border_fix(1,j) = 0.0;
                 }
             }
             j++;
         }
         assert(j == nBP);
-        nPar_shape = shape_par.size();
-        ParMat.resize(nBP*2, nPar_shape);
-        par_shape_limits.resize(nPar_shape,2);
+        NPAR_SHAPE = shape_par.size();
+        par_shape.resize(nBP*2, NPAR_SHAPE);
+        par_shape_limits.resize(NPAR_SHAPE,2);
         {
             std::vector<Trip> coef;
-            for (size_t i=0; i<nPar_shape; i++) {
+            for (size_t i=0; i<NPAR_SHAPE; i++) {
                 size_t idx = std::get<0>(shape_par[i]);
                 double lower = std::get<1>(shape_par[i]);
                 double upper = std::get<2>(shape_par[i]);
@@ -358,9 +328,8 @@ int main(int argc, char **argv) {
                 par_shape_limits(i,0) = lower;
                 par_shape_limits(i,1) = upper;
             }
-            ParMat.setFromTriplets(coef.begin(), coef.end());
+            par_shape.setFromTriplets(coef.begin(), coef.end());
         }
-
     }
 
     {
@@ -374,8 +343,8 @@ int main(int argc, char **argv) {
             v1(0,j) = border_directions(0,i);
             v1(1,j) = border_directions(1,i);
             skal(j) = border_skal(i);
-            fix0(j) = border_fix(0,j);
-            fix1(j) = border_fix(1,j);
+            fix0(j) = border_fix(0,i);
+            fix1(j) = border_fix(1,i);
         }
         fields.push_back(std::make_tuple(
             "v1",
@@ -388,7 +357,7 @@ int main(int argc, char **argv) {
         write_vtu("output/bord.vtu", to_span(m.P), to_span(m.T), fields);
     }
 
-    return 0;
+    size_t NPAR = NPAR_SHAPE + NPAR_DEPTH;
 
     n_bord = nBP;
     bord = border_indexes.data();
@@ -405,74 +374,64 @@ int main(int argc, char **argv) {
 
     Eigen::Matrix<double, 2, Eigen::Dynamic> dir_disp(2, nBP);
     Eigen::Matrix<double, 2, Eigen::Dynamic> P1 = m.P;
-    Eigen::Matrix<double, 2, Eigen::Dynamic> res(2, m.nP);
+    Eigen::VectorXd res(DOF);
+    
+    Eigen::VectorXd par(NPAR_SHAPE); par.setZero();
+    par[2] = 0.05;
+    dir_disp = (par_shape * par).reshaped(2,nBP);
+    const int iter_max = 20;
+    for(int iter = 0; iter < iter_max; iter++) {
+        res.setZero();
+        morph_energy_fix(m.P.data(), P1.data(), dir_disp.data(), res.data(), energy_weights.data());
+        {
+            std::vector<std::tuple<std::string, int, std::span<double> > >fields;
+            fields.push_back(std::make_tuple("res", 2, to_span(res)));
+            char buf[1024]; sprintf(buf, "output/morph_%04d.vtu", iter);
+            write_vtu(buf, to_span(P1), to_span(m.T), fields);
+        }
 
-    morph_energy_fix(m.P.data(), P1.data(), dir_disp.data(), res.data(), energy_weights.data());
-    {
-        double resL2 = res.norm();
-        printf("Residual (before): %lg\n", resL2);
-    }
+        {
+            double resL2 = res.norm();
+            printf("Residual: %lg\n", resL2);
+            if (resL2 < 1e-8) break;
+        }
 
-    SpMat K(DOF,DOF);
-    {
-        printf("Gathering morphing energy Hessian at 0");
-        std::vector<Trip> coef;
-        printf(" [mult]");
-        Eigen::VectorXd P1b_tmp(DOF);
-        Eigen::VectorXd energy_tmp(2);
-        
-        Eigen::VectorXd Mx(DOF);
-        for (size_t k=0; k<maxk; k++) {
-            Mx.setZero();
-            morph_energy_fix_d(m.P.data(), m.P.data(), ref_x.col(k).data(), Pfix.data(), P1b_tmp.data(), Mx.data(), energy_weights.data());
-            for (size_t j=0; j<DOF; j++){
-                if (fabs(Mx[j]) > 1e-6) {
-                    coef.push_back(Trip(j,ref_j(j,k),Mx[j]));
+        SpMat K(DOF,DOF);
+        {
+            printf("Gathering morphing energy Hessian at 0");
+            std::vector<Trip> coef;
+            printf(" [mult]");
+            Eigen::VectorXd res_tmp(DOF);
+            Eigen::VectorXd energy_tmp(2);
+            
+            Eigen::VectorXd Mx(DOF);
+            for (size_t k=0; k<maxk; k++) {
+                Mx.setZero();
+                //                (    P0    ,    P1    ,           P1d      ,     dir_disp   ,       res     ,   resd   ,  energyb             );
+                morph_energy_fix_d(m.P.data(), P1.data(), ref_x.col(k).data(), dir_disp.data(), res_tmp.data(), Mx.data(), energy_weights.data());
+                for (size_t j=0; j<DOF; j++){
+                    if (fabs(Mx[j]) > 1e-6) {
+                        coef.push_back(Trip(j,ref_j(j,k),Mx[j]));
+                    }
                 }
             }
+            printf(" [sparse]");
+            K.setFromTriplets(coef.begin(), coef.end());
+            printf(" [done]\n");
         }
-        printf(" [sparse]");
-        K.setFromTriplets(coef.begin(), coef.end());
-        printf(" [done]\n");
-    }
 
-    {
-        // for (size_t i=0; i<DOF; i++) {
-        //     for (int j = 0; j<NPAR_SHAPE; j++) {
-        //         if (!P_bord[i]){
-        //             par_shape(i,j) = 0;
-        //         }                
-        //     }
-        // }
-        printf("Solving linear problem");
-        Eigen::KLU<SpMat> solver;  // performs a Cholesky factorization of A
-        printf(" [compute]");
-        solver.compute(K); assert(solver.info() == Eigen::Success);
-        printf(" [solve]");
-        for (int j = 0; j<NPAR_SHAPE; j++) {
-            par_shape.col(j) = solver.solve(par_shape.col(j));
-            assert(solver.info() == Eigen::Success);
+        {
+            printf("Solving linear problem");
+            Eigen::KLU<SpMat> solver;  // performs a Cholesky factorization of A
+            printf(" [compute]");
+            solver.compute(K); assert(solver.info() == Eigen::Success);
+            printf(" [solve]");
+            Eigen::VectorXd ret = solver.solve(res);
+            printf(" [done]\n");
+            P1 = P1 - ret.reshaped(2, m.nP);
         }
-        printf(" [done]\n");
     }
     
-    return 0;
-    {
-        std::vector<std::tuple<std::string, int, std::span<double> > >fields;
-        for (int j = 0; j<NPAR_SHAPE; j++) {
-            char buf[1024];
-            sprintf(buf, "par_%02d", j);
-            fields.push_back(std::make_tuple(
-                std::string(buf),
-                2,
-                std::span(par_shape.col(j).data(),par_shape.col(j).size())
-            ));
-        }
-        write_vtu("output/par_morph.vtu", to_span(m.P), to_span(m.T), fields);
-    }
-
-
-//    return 0;
 
     // problem coefficient
     //double wave_k = 4.0;
