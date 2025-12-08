@@ -20,7 +20,7 @@ void morph_energy_fix(const double *P0, const double *P1, const double *dir_disp
         double dispy = P1[iy] - P0[iy];
         double disp0 = dispx*vx + dispy*vy;
         double disp1 = -dispx*vy + dispy*vx;
-        double res0 = res[ix]*vx + res[iy]*vy;
+        double res0 =  res[ix]*vx + res[iy]*vy;
         double res1 = -res[ix]*vy + res[iy]*vx;
         res0 = res0 * (1-fix[2*i+0]) + (disp0 - dir_disp[2*i+0]) * fix[2*i+0];
         res1 = res1 * (1-fix[2*i+1]) + (disp1 - dir_disp[2*i+1]) * fix[2*i+1];

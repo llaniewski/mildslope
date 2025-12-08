@@ -276,7 +276,7 @@ int main(int argc, char **argv) {
         border_skal.resize(nBP,1);
         border_fix.resize(2,nBP);
         
-        std::vector< std::tuple< size_t, double, double > > shape_par;
+        std::vector< std::tuple< size_t, double, double, double > > shape_par;
         size_t j = 0;
         for (size_t i=0;i<m.nP;i++) if (P_bord[i]) {
             border_indexes(j) = i;
@@ -289,7 +289,8 @@ int main(int argc, char **argv) {
             Eigen::Vector2d v1 = vecs[1];
             Eigen::Vector2d w0 = v0 + v1;
             w0.normalize();
-
+            double scale = (v0.norm() + v1.norm())/2;
+            scale = 0.1/sqrt(scale);
             v0.normalize();
             v1.normalize();
             double skal = v0.dot(v1);
@@ -305,9 +306,9 @@ int main(int argc, char **argv) {
             if (m.nAttr > 2) sides = m.Attr(i,2); else sides = 0.2*(outer-inner);
             assert(outer - inner > -1e-6);
             if (outer - inner > 1e-6) {
-                shape_par.push_back(std::make_tuple(2*j+0,inner,outer));
+                shape_par.push_back(std::make_tuple(2*j+0,scale,inner,outer));
                 if (fabs(skal) < 0.5) {
-                    shape_par.push_back(std::make_tuple(2*j+1,-sides,sides));
+                    shape_par.push_back(std::make_tuple(2*j+1,scale,-sides,sides));
                 } else {
                     //border_fix(1,j) = 0.0;
                 }
@@ -322,11 +323,12 @@ int main(int argc, char **argv) {
             std::vector<Trip> coef;
             for (size_t i=0; i<NPAR_SHAPE; i++) {
                 size_t idx = std::get<0>(shape_par[i]);
-                double lower = std::get<1>(shape_par[i]);
-                double upper = std::get<2>(shape_par[i]);
-                coef.push_back(Trip(idx,i,1));
-                par_shape_limits(i,0) = lower;
-                par_shape_limits(i,1) = upper;
+                double scale = std::get<1>(shape_par[i]);
+                double lower = std::get<2>(shape_par[i]);
+                double upper = std::get<3>(shape_par[i]);
+                coef.push_back(Trip(idx,i,scale));
+                par_shape_limits(i,0) = lower/scale;
+                par_shape_limits(i,1) = upper/scale;
             }
             par_shape.setFromTriplets(coef.begin(), coef.end());
         }
@@ -372,66 +374,6 @@ int main(int argc, char **argv) {
     energy_weights(0) = Poiss; //(tr(E))^2
     energy_weights(1) = (1-2*Poiss); // tr(E^2)
 
-    Eigen::Matrix<double, 2, Eigen::Dynamic> dir_disp(2, nBP);
-    Eigen::Matrix<double, 2, Eigen::Dynamic> P1 = m.P;
-    Eigen::VectorXd res(DOF);
-    
-    Eigen::VectorXd par(NPAR_SHAPE); par.setZero();
-    par[2] = 0.05;
-    dir_disp = (par_shape * par).reshaped(2,nBP);
-    const int iter_max = 20;
-    for(int iter = 0; iter < iter_max; iter++) {
-        res.setZero();
-        morph_energy_fix(m.P.data(), P1.data(), dir_disp.data(), res.data(), energy_weights.data());
-        {
-            std::vector<std::tuple<std::string, int, std::span<double> > >fields;
-            fields.push_back(std::make_tuple("res", 2, to_span(res)));
-            char buf[1024]; sprintf(buf, "output/morph_%04d.vtu", iter);
-            write_vtu(buf, to_span(P1), to_span(m.T), fields);
-        }
-
-        {
-            double resL2 = res.norm();
-            printf("Residual: %lg\n", resL2);
-            if (resL2 < 1e-8) break;
-        }
-
-        SpMat K(DOF,DOF);
-        {
-            printf("Gathering morphing energy Hessian at 0");
-            std::vector<Trip> coef;
-            printf(" [mult]");
-            Eigen::VectorXd res_tmp(DOF);
-            Eigen::VectorXd energy_tmp(2);
-            
-            Eigen::VectorXd Mx(DOF);
-            for (size_t k=0; k<maxk; k++) {
-                Mx.setZero();
-                //                (    P0    ,    P1    ,           P1d      ,     dir_disp   ,       res     ,   resd   ,  energyb             );
-                morph_energy_fix_d(m.P.data(), P1.data(), ref_x.col(k).data(), dir_disp.data(), res_tmp.data(), Mx.data(), energy_weights.data());
-                for (size_t j=0; j<DOF; j++){
-                    if (fabs(Mx[j]) > 1e-6) {
-                        coef.push_back(Trip(j,ref_j(j,k),Mx[j]));
-                    }
-                }
-            }
-            printf(" [sparse]");
-            K.setFromTriplets(coef.begin(), coef.end());
-            printf(" [done]\n");
-        }
-
-        {
-            printf("Solving linear problem");
-            Eigen::KLU<SpMat> solver;  // performs a Cholesky factorization of A
-            printf(" [compute]");
-            solver.compute(K); assert(solver.info() == Eigen::Success);
-            printf(" [solve]");
-            Eigen::VectorXd ret = solver.solve(res);
-            printf(" [done]\n");
-            P1 = P1 - ret.reshaped(2, m.nP);
-        }
-    }
-    
 
     // problem coefficient
     //double wave_k = 4.0;
@@ -452,17 +394,85 @@ int main(int argc, char **argv) {
             integral_weights(0,i) = weight;
         }
     }
-    Eigen::Matrix<double, 2, Eigen::Dynamic> P0 = m.P;
+
     Eigen::VectorXd D0(m.nP);
     for (size_t i=0; i<D0.size(); i++) D0(i) = 1;
 
+    const int iter_morph_ramp = 100;
+    const int iter_morph_max = 500;
+    const int iter_problem_max = 20;
     int iter = 0;
     const auto& objective = [&](const double *pr_, double* grad_, bool export_all=false) -> double {
         Eigen::Map< const Eigen::VectorXd > pr_shape(pr_, NPAR_SHAPE);
         Eigen::Map< const Eigen::VectorXd > pr_depth(pr_ + NPAR_SHAPE, NPAR_DEPTH);
-        m.P = P0 + (par_shape * pr_shape).reshaped(2,m.nP);
-        //P = P0;
-        Eigen::VectorXd D = D0 + par_depth * pr_depth;
+        Eigen::VectorXd D;
+        Eigen::VectorXd dir_disp;
+
+        D = D0 + par_depth * pr_depth;
+        dir_disp = par_shape * pr_shape;
+
+        Eigen::Matrix<double, 2, Eigen::Dynamic> P1 = m.P;
+        Eigen::VectorXd res_morph(DOF);
+        bool do_exit = false;
+        SpMat K(DOF,DOF);
+        for(int iter_morph = 0; iter_morph < iter_morph_max; iter_morph++) {
+            res_morph.setZero();
+            morph_energy_fix(m.P.data(), P1.data(), dir_disp.data(), res_morph.data(), energy_weights.data());
+            {
+                std::vector<std::tuple<std::string, int, std::span<double> > >fields;
+                fields.push_back(std::make_tuple("res", 2, to_span(res_morph)));
+                char buf[1024];
+                sprintf(buf, "output/morph_%04d_%04d.vtu", iter, iter_morph);
+                write_vtu(buf, to_span(P1), to_span(m.T), fields);
+            }
+
+            {
+                double resL2 = res_morph.norm();
+                printf("%8d %3d Residual (morph): %lg\n", iter, iter_morph, resL2);
+                if (resL2 < 1e-8) do_exit = true;
+            }
+            if (grad_ == NULL && do_exit) break;
+            
+            {
+                printf("Gathering morphing energy Hessian at 0");
+                std::vector<Trip> coef;
+                printf(" [mult]");
+                Eigen::VectorXd res_tmp(DOF);
+                Eigen::VectorXd energy_tmp(2);
+                
+                Eigen::VectorXd Mx(DOF);
+                for (size_t k=0; k<maxk; k++) {
+                    Mx.setZero();
+                    //                (    P0    ,    P1    ,           P1d      ,     dir_disp   ,       res     ,   resd   ,  energyb             );
+                    morph_energy_fix_d(m.P.data(), P1.data(), ref_x.col(k).data(), dir_disp.data(), res_tmp.data(), Mx.data(), energy_weights.data());
+                    for (size_t j=0; j<DOF; j++){
+                        if (fabs(Mx[j]) > 1e-6) {
+                            coef.push_back(Trip(j,ref_j(j,k),Mx[j]));
+                        }
+                    }
+                }
+                printf(" [sparse]");
+                K.setFromTriplets(coef.begin(), coef.end());
+                printf(" [done]\n");
+            }
+            if (grad_ != NULL && do_exit) break;
+            {
+                printf("Solving linear problem");
+                Eigen::KLU<SpMat> solver;  // performs a Cholesky factorization of A
+                printf(" [compute]");
+                solver.compute(K); assert(solver.info() == Eigen::Success);
+                printf(" [solve]");
+                Eigen::VectorXd ret = solver.solve(res_morph);
+                printf(" [done]\n");
+                // double coef = 1;
+                // if (iter_morph < iter_morph_ramp) {
+                //     coef = (iter_morph+1.0) / iter_morph_ramp;
+                // }
+
+                P1 = P1 - ret.reshaped(2, m.nP);// * coef;
+            }
+        }
+
         double total_obj = 0;
         Eigen::Map< Eigen::VectorXd >total_grad_shape(grad_, NPAR_SHAPE);
         Eigen::Map< Eigen::VectorXd >total_grad_depth(grad_ + NPAR_SHAPE, NPAR_DEPTH);
@@ -477,54 +487,52 @@ int main(int argc, char **argv) {
             Eigen::VectorXd x(DOF); x.setZero();
             Eigen::VectorXd res(DOF);
             Eigen::VectorXd obj(NOBJ);
-
-            problem(wave_k, m.P.data(), D.data(), x.data(), res.data(), obj.data());
-            //printf("obj:%lg\n", obj[0]);
-
-            {
-                double resL2 = res.norm();
-                printf("Residual (before): %lg\n", resL2);
-            }
-            
-            Eigen::VectorXd Pd(DOF);
             Eigen::VectorXd res_tmp(DOF);
             Eigen::VectorXd obj_tmp(NOBJ);
-
-            Eigen::VectorXd Mx(DOF);
-
             SpMat A(DOF,DOF);
-            {
-                printf("Gathering Jacobian");
-                std::vector<Trip> coef;
-                printf(" [mult]");
-                for (size_t k=0; k<maxk; k++) {
-                    problem_d(wave_k, m.P.data(), D.data(), x.data(), ref_x.col(k).data(), res_tmp.data(), Mx.data(), obj_tmp.data());
-                    for (size_t j=0; j<DOF; j++){
-                        if (fabs(Mx[j]) > 1e-6) {
-                            coef.push_back(Trip(j,ref_j(j,k),Mx[j]));
-                        }
-                    }
-                    //printf("mult %ld -> %ld\n", k, coef.size());
+            bool do_exit = false;
+            for(int iter_problem = 0; iter_problem < iter_problem_max; iter_problem++) {
+                problem(wave_k, P1.data(), D.data(), x.data(), res.data(), obj.data());
+
+                {
+                    double resL2 = res.norm();
+                    printf("%8d %6lg %3d Residual (problem): %lg\n", iter, wave_k, iter_problem, resL2);
+                    if (resL2 < 1e-8) do_exit = true;
                 }
-                printf(" [sparse]");
-                A.setFromTriplets(coef.begin(), coef.end());
-                printf(" [done]\n");
+                if (grad_ == NULL && do_exit) break;
+      
+                {
+                    Eigen::VectorXd Mx(DOF);
+                    printf("Gathering Jacobian");
+                    std::vector<Trip> coef;
+                    printf(" [mult]");
+                    for (size_t k=0; k<maxk; k++) {
+                        problem_d(wave_k, P1.data(), D.data(), x.data(), ref_x.col(k).data(), res_tmp.data(), Mx.data(), obj_tmp.data());
+                        for (size_t j=0; j<DOF; j++){
+                            if (fabs(Mx[j]) > 1e-6) {
+                                coef.push_back(Trip(j,ref_j(j,k),Mx[j]));
+                            }
+                        }
+                        //printf("mult %ld -> %ld\n", k, coef.size());
+                    }
+                    printf(" [sparse]");
+                    A.setFromTriplets(coef.begin(), coef.end());
+                    printf(" [done]\n");
+                }
+                if (grad_ != NULL && do_exit) break;
+                {
+                    printf("Solving linear problem");
+                    Eigen::KLU<SpMat> solver;  // performs a Cholesky factorization of A
+                    printf(" [compute]");
+                    solver.compute(A); assert(solver.info() == Eigen::Success);
+                    printf(" [solve]");
+                    Eigen::VectorXd ret = solver.solve(res); assert(solver.info() == Eigen::Success);
+                    printf(" [done]\n");
+                    for (size_t i=0; i<ret.size(); i++) x[i] -= ret[i];
+                }
             }
 
-            {
-                printf("Solving linear problem");
-                Eigen::KLU<SpMat> solver;  // performs a Cholesky factorization of A
-                printf(" [compute]");
-                solver.compute(A); assert(solver.info() == Eigen::Success);
-                printf(" [solve]");
-                Eigen::VectorXd ret = solver.solve(res); assert(solver.info() == Eigen::Success);
-                printf(" [done]\n");
-                for (size_t i=0; i<ret.size(); i++) x[i] -= ret[i];
-            }
-
-            
-
-            problem(wave_k, m.P.data(), D.data(), x.data(), res.data(), obj.data());
+            problem(wave_k, P1.data(), D.data(), x.data(), res.data(), obj.data());
             {
                 double resL2 = res.norm();
                 printf("Residual (after): %lg\n", resL2);
@@ -533,14 +541,15 @@ int main(int argc, char **argv) {
             total_obj += weights.dot(obj);
             objs.push_back(std::make_pair(wave_k, obj[0]));
 
+            Eigen::VectorXd Pb(DOF); Pb.setZero();
             // ADJOINT
             if (grad_ != NULL) {
-                Eigen::VectorXd Pb(DOF); Pb.setZero();
+                
                 Eigen::VectorXd Db(m.nP); Db.setZero();
                 Eigen::VectorXd xb(DOF); xb.setZero();
                 Eigen::VectorXd objb(NOBJ); objb.setZero();
                 objb = weights;
-                problem_bX(wave_k, m.P.data(), D.data(), x.data(), xb.data(), res_tmp.data(), obj_tmp.data(), objb.data());
+                problem_bX(wave_k, P1.data(), D.data(), x.data(), xb.data(), res_tmp.data(), obj_tmp.data(), objb.data());
 
                 Eigen::VectorXd resb;
                 {   
@@ -553,9 +562,23 @@ int main(int argc, char **argv) {
                     printf(" [done]\n");
                 }
                 
-                problem_bP(wave_k, m.P.data(), Pb.data(), D.data(), Db.data(), x.data(), res_tmp.data(), resb.data(), obj_tmp.data(), objb.data());
+                problem_bP(wave_k, P1.data(), Pb.data(), D.data(), Db.data(), x.data(), res_tmp.data(), resb.data(), obj_tmp.data(), objb.data());
 
-                Eigen::VectorXd grad_shape = Pb.transpose() * par_shape;
+                Eigen::VectorXd res_morphb;
+                {   
+                    printf("Solving adjoint morph");
+                    Eigen::KLU<SpMat> solver;  // performs a Cholesky factorization of A
+                    printf(" [compute]");
+                    solver.compute(K.transpose()); assert(solver.info() == Eigen::Success);
+                    printf(" [solve]");
+                    res_morphb = solver.solve(-Pb); assert(solver.info() == Eigen::Success);
+                    printf(" [done]\n");
+                }
+
+                Eigen::VectorXd dir_dispb(nBP*2); dir_dispb.setZero();
+                morph_energy_fix_b(m.P.data(), P1.data(), dir_disp.data(), dir_dispb.data(), res_morph.data(), res_morphb.data(), energy_weights.data());
+
+                Eigen::VectorXd grad_shape = dir_dispb.transpose() * par_shape;
                 total_grad_shape += grad_shape;
                 Eigen::VectorXd grad_depth = Db.transpose() * par_depth;
                 total_grad_depth += grad_depth;
@@ -563,8 +586,9 @@ int main(int argc, char **argv) {
             if (export_all || (kidx == KINT-1)) {
                 char buf[1024];
                 sprintf(buf, "output/res_%lg_%04d.vtu", wave_k, iter);
-                write_vtu(buf, to_span(m.P), to_span(m.T), {
+                write_vtu(buf, to_span(P1), to_span(m.T), {
                     std::make_tuple(std::string("Eta"), 2, to_span(x)),
+                    std::make_tuple(std::string("Pb"), 2, to_span(Pb)),
                     std::make_tuple(std::string("depth"), 1, to_span(D))
                 });
             }
@@ -604,8 +628,8 @@ int main(int argc, char **argv) {
     if (false) { // FD test
         Eigen::VectorXd pr(NPAR); pr.setZero();
         Eigen::VectorXd gr(NPAR);
-        pr(2) += 0.05;
-        pr(5) += -0.05;
+        pr(2) += 0.1;
+        pr(5) += -0.1;
         double val = objective(pr.data(), gr.data(), true);
         double h = 1e-4;
         for (int i=0; i<NPAR; i++) {
@@ -631,6 +655,7 @@ int main(int argc, char **argv) {
     Eigen::VectorXd lower(NPAR); lower.setZero();
     Eigen::VectorXd upper(NPAR); upper.setZero();
     for (size_t i=0;i<NPAR_SHAPE; i++) {
+
         lower(i) = -0.2;
         upper(i) =  1.0;
     }
