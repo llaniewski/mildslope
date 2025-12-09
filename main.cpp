@@ -500,6 +500,7 @@ int main(int argc, char **argv) {
             total_grad_shape.setZero();
             total_grad_depth.setZero();
         }
+        std::mutex outputs_mutex;
         Eigen::Array<double, 2+NOBJ, Eigen::Dynamic> objs(2+NOBJ, KINT);
         Eigen::VectorXd P_grad(DOF); P_grad.setZero();
         Eigen::VectorXd D_grad(m.nP); D_grad.setZero();
@@ -564,10 +565,12 @@ int main(int argc, char **argv) {
             double wobj = weights.dot(obj);
             printf(" -> %lg\n", wobj);
             total_obj += wobj;
-            objs(0,kidx) = wave_k;
-            objs(1,kidx) = total_obj;
-            for (int k=0;k<NOBJ;k++) objs(2+k,kidx) = obj[k];
-
+            {
+                std::lock_guard<std::mutex> lock(outputs_mutex);
+                objs(0,kidx) = wave_k;
+                objs(1,kidx) = total_obj;
+                for (int k=0;k<NOBJ;k++) objs(2+k,kidx) = obj[k];
+            }
             Eigen::VectorXd Pb(DOF); Pb.setZero();
             // ADJOINT
             if (grad_ != NULL) {
@@ -590,8 +593,11 @@ int main(int argc, char **argv) {
                 }
                 
                 problem_bP(wave_k, P1.data(), Pb.data(), D.data(), Db.data(), x.data(), res_tmp.data(), resb.data(), obj_tmp.data(), objb.data());
-                P_grad += Pb;
-                D_grad += Db;
+                {
+                    std::lock_guard<std::mutex> lock(outputs_mutex);        
+                    P_grad += Pb;
+                    D_grad += Db;
+                }
             }
             if (export_all || (kidx == KINT-1)) {
                 char buf[1024];
@@ -607,7 +613,7 @@ int main(int argc, char **argv) {
         {
             std::atomic<size_t> akidx = 0;
             std::vector<std::jthread> thr;
-            for (int i=0;i<5;i++) {
+            for (int i=0;i<8;i++) {
                 thr.push_back(std::jthread([&](){
                     for(size_t kidx = (akidx++); kidx < KINT; kidx = (akidx++)) solve_problem(kidx);
                 }));
@@ -669,7 +675,7 @@ int main(int argc, char **argv) {
         return total_obj;
     };
     
-    if (true) { // FD test
+    if (false) { // FD test
         Eigen::VectorXd pr(NPAR); pr.setZero();
         Eigen::VectorXd gr(NPAR);
         pr(2) += 0.1;
