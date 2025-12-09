@@ -644,14 +644,26 @@ int main(int argc, char **argv) {
         return 0;
     }
 
-    using obj_type = decltype(&objective);
+    const auto& precond = [&](const double *grad_, double* direction_) {
+
+    };
+
+    using obj_type = decltype(objective);
+    using pre_type = decltype(precond);
+    struct obj_data_t {
+        obj_type& obj;
+        pre_type& pre;
+    } obj_data{objective, precond};
+
     nlopt_opt opt = nlopt_create(NLOPT_LD_LBFGS, NPAR);
     nlopt_result opt_res;
-    opt_res = nlopt_set_min_objective(opt, 
-        [](unsigned n, const double* x, double* grad, void* f_data) -> double {
-            obj_type fun = (obj_type) f_data;
-            return (*fun)(x, grad);
-        }, (void*) &objective);
+    opt_res = nlopt_set_precond_min_objective(
+        opt,
+        [](unsigned n, const double* x, double* grad, void* f_data) -> double { return static_cast<obj_data_t*>(f_data)->obj(x, grad); },
+        [](unsigned n, const double *x, const double *v, double *vpre, void *f_data) { return static_cast<obj_data_t*>(f_data)->pre(v, vpre); },
+        (void*) &obj_data
+    );
+
     Eigen::VectorXd lower(NPAR); lower.setZero();
     Eigen::VectorXd upper(NPAR); upper.setZero();
     for (size_t i=0;i<NPAR_SHAPE; i++) {
