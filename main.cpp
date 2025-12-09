@@ -501,7 +501,7 @@ int main(int argc, char **argv) {
             total_grad_depth.setZero();
         }
         std::mutex outputs_mutex;
-        Eigen::Array<double, 2+NOBJ, Eigen::Dynamic> objs(2+NOBJ, KINT);
+        Eigen::Array<double, 2+NOBJ, Eigen::Dynamic> objs(2+NOBJ, KINT); objs.setZero();
         Eigen::VectorXd P_grad(DOF); P_grad.setZero();
         Eigen::VectorXd D_grad(m.nP); D_grad.setZero();
         const auto& solve_problem = [&](size_t kidx) {
