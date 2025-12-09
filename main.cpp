@@ -11,6 +11,7 @@
 #include <iostream>
 #include <set>
 #include <fstream>
+#include <thread>
 #include <nlopt.h>
 
 const double pi = 4.0 * atan(1.0);
@@ -230,92 +231,107 @@ int main(int argc, char **argv) {
     boundary_flag = m.B_flag.data();
     n_boundary = m.nB;
 
+    SpMat border_mat;
+    SpMat edge_mass_mat;
     size_t nBP = 0;
     Eigen::Array<size_t, Eigen::Dynamic, 1> border_indexes;
     Eigen::Matrix<double, 2, Eigen::Dynamic> border_directions;
-    Eigen::Matrix<double, Eigen::Dynamic,1 > border_skal;
     Eigen::Matrix<double, 2, Eigen::Dynamic > border_fix;
     Eigen::Matrix<double, Eigen::Dynamic, 2> par_shape_limits;
     {
-        std::vector<bool> P_bord(m.nP);
-        std::map<size_t, std::vector< Eigen::Vector2d > > bvec;
         std::set< std::array< size_t, 2 > > bpairs;
+        for (size_t i=0;i<m.nB;i++) bpairs.emplace(std::array<size_t, 2>{m.B(0,i), m.B(1,i)});            
+        std::map<size_t, std::vector< Eigen::Vector2d > > bvec;
+        std::vector<bool> P_bord(m.nP);
         for (size_t i=0;i<P_bord.size();i++) P_bord[i] = false;
-        for (size_t i=0;i<m.nB;i++) {
-            size_t i0 = m.B(0,i);
-            size_t i1 = m.B(1,i);
-            P_bord[i0] = true;
-            P_bord[i1] = true;
-            bpairs.emplace(std::array<size_t, 2>{i0, i1});
-        }
-        for (size_t i=0;i<m.nT;i++) {
-            size_t i0 = m.T(0,i);
-            size_t i1 = m.T(1,i);
-            size_t i2 = m.T(2,i);
-            auto fun = [&](size_t j0, size_t j1, size_t j2) {
-                if (bpairs.count({j0,j1}) + bpairs.count({j1,j0}) == 0) return;
-                Eigen::Vector2d p0 = m.P.col(j0);
-                Eigen::Vector2d p1 = m.P.col(j1);
-                Eigen::Vector2d p2 = m.P.col(j2);
+        edge_mass_mat.resize(2*m.nP,2*m.nP);
+        {
+            std::vector<Trip> coef;
+            auto fun = [&](size_t i0, size_t i1, size_t i2) {
+                if (bpairs.count({i0,i1}) + bpairs.count({i1,i0}) == 0) return;
+                P_bord[i0] = true;
+                P_bord[i1] = true;
+                Eigen::Vector2d p0 = m.P.col(i0);
+                Eigen::Vector2d p1 = m.P.col(i1);
+                Eigen::Vector2d p2 = m.P.col(i2);
                 Eigen::Vector2d v = p1 - p0;
+                double len = v.norm();
+                for (int k=0; k<2; k++) {
+                    coef.push_back(Trip(i0*2+k,i0*2+k,len/3));
+                    coef.push_back(Trip(i0*2+k,i1*2+k,len/6));
+                    coef.push_back(Trip(i1*2+k,i0*2+k,len/6));
+                    coef.push_back(Trip(i1*2+k,i1*2+k,len/3));
+                }
                 //v.normalize();
                 double tmp = v(1); v(1) = -v(0); v(0) = tmp;
                 Eigen::Vector2d w = p2 - p0;
                 if (v.dot(w) > 0.0) v = -v;
-                bvec[j0].push_back(v);
-                bvec[j1].push_back(v);
+                bvec[i0].push_back(v);
+                bvec[i1].push_back(v);
+                
             };
-            fun(i0,i1,i2);
-            fun(i1,i2,i0);
-            fun(i2,i0,i1);
+            for (size_t i=0;i<m.nT;i++) {
+                size_t i0 = m.T(0,i);
+                size_t i1 = m.T(1,i);
+                size_t i2 = m.T(2,i);
+                fun(i0,i1,i2);
+                fun(i1,i2,i0);
+                fun(i2,i0,i1);
+            }
+            
+            edge_mass_mat.setFromTriplets(coef.begin(), coef.end());
         }
-
         for (size_t i=0;i<m.nP;i++) if (P_bord[i]) nBP++;
         border_indexes.resize(nBP,1);
         border_directions.resize(2,nBP);
-        border_skal.resize(nBP,1);
         border_fix.resize(2,nBP);
-        
+        border_mat.resize(2*m.nP,2*nBP);
         std::vector< std::tuple< size_t, double, double, double > > shape_par;
-        size_t j = 0;
-        for (size_t i=0;i<m.nP;i++) if (P_bord[i]) {
-            border_indexes(j) = i;
-            std::vector< Eigen::Vector2d > vecs = bvec[i];
-            if (vecs.size() != 2) {
-                printf("Number of normal vectors for %ld is %ld\n", i, vecs.size());
-            }
-            assert(vecs.size() == 2);
-            Eigen::Vector2d v0 = vecs[0];
-            Eigen::Vector2d v1 = vecs[1];
-            Eigen::Vector2d w0 = v0 + v1;
-            w0.normalize();
-            double scale = (v0.norm() + v1.norm())/2;
-            scale = 0.1/sqrt(scale);
-            v0.normalize();
-            v1.normalize();
-            double skal = v0.dot(v1);
-            border_directions(0,j) = w0(0);
-            border_directions(1,j) = w0(1);
-            border_skal(j) = skal;
-            border_fix(0,j) = 1.0;
-            border_fix(1,j) = 1.0;
-
-            double outer, inner, sides;
-            if (m.nAttr > 0) outer = m.Attr(i,0); else outer = 1;
-            if (m.nAttr > 1) inner = m.Attr(i,1); else inner = -outer;
-            if (m.nAttr > 2) sides = m.Attr(i,2); else sides = 0.2*(outer-inner);
-            assert(outer - inner > -1e-6);
-            if (outer - inner > 1e-6) {
-                shape_par.push_back(std::make_tuple(2*j+0,scale,inner,outer));
-                if (fabs(skal) < 0.5) {
-                    shape_par.push_back(std::make_tuple(2*j+1,scale,-sides,sides));
-                } else {
-                    //border_fix(1,j) = 0.0;
+        {
+            std::vector<Trip> coef;
+            size_t j = 0;
+            for (size_t i=0;i<m.nP;i++) if (P_bord[i]) {
+                border_indexes(j) = i;
+                std::vector< Eigen::Vector2d > vecs = bvec[i];
+                if (vecs.size() != 2) {
+                    printf("Number of normal vectors for %ld is %ld\n", i, vecs.size());
                 }
+                assert(vecs.size() == 2);
+                Eigen::Vector2d v0 = vecs[0];
+                Eigen::Vector2d v1 = vecs[1];
+                Eigen::Vector2d w0 = v0 + v1;
+                w0.normalize();
+                v0.normalize();
+                v1.normalize();
+                double skal = v0.dot(v1);
+                coef.push_back(Trip(i*2+0,j*2+0, w0(0)));
+                coef.push_back(Trip(i*2+1,j*2+0, w0(1)));
+                coef.push_back(Trip(i*2+0,j*2+1,-w0(1)));
+                coef.push_back(Trip(i*2+1,j*2+1, w0(0)));
+
+                border_directions(0,j) = w0(0);
+                border_directions(1,j) = w0(1);
+                border_fix(0,j) = 1.0;
+                border_fix(1,j) = 1.0;
+
+                double outer, inner, sides, scale=1;
+                if (m.nAttr > 0) outer = m.Attr(i,0); else outer = 1;
+                if (m.nAttr > 1) inner = m.Attr(i,1); else inner = -outer;
+                if (m.nAttr > 2) sides = m.Attr(i,2); else sides = 0.2*(outer-inner);
+                assert(outer - inner > -1e-6);
+                if (outer - inner > 1e-6) {
+                    shape_par.push_back(std::make_tuple(2*j+0,scale,inner,outer));
+                    if (fabs(skal) < 0.5) {
+                        shape_par.push_back(std::make_tuple(2*j+1,scale,-sides,sides));
+                    } else {
+                        //border_fix(1,j) = 0.0;
+                    }
+                }
+                j++;
             }
-            j++;
+            assert(j == nBP);
+            border_mat.setFromTriplets(coef.begin(), coef.end());
         }
-        assert(j == nBP);
         NPAR_SHAPE = shape_par.size();
         par_shape.resize(nBP*2, NPAR_SHAPE);
         par_shape_limits.resize(NPAR_SHAPE,2);
@@ -337,14 +353,12 @@ int main(int argc, char **argv) {
     {
         std::vector<std::tuple<std::string, int, std::span<double> > >fields;
         Eigen::Matrix<double, 3, Eigen::Dynamic> v1(3,m.nP); v1.setZero();
-        Eigen::Matrix<double, Eigen::Dynamic, 1> skal(m.nP); skal.setZero();
         Eigen::Matrix<double, Eigen::Dynamic, 1> fix0(m.nP); fix0.setZero();
         Eigen::Matrix<double, Eigen::Dynamic, 1> fix1(m.nP); fix1.setZero();
         for (size_t i=0;i<nBP;i++)  {
             size_t j = border_indexes[i];
             v1(0,j) = border_directions(0,i);
             v1(1,j) = border_directions(1,i);
-            skal(j) = border_skal(i);
             fix0(j) = border_fix(0,i);
             fix1(j) = border_fix(1,i);
         }
@@ -353,12 +367,18 @@ int main(int argc, char **argv) {
             3,
             std::span(v1.data(),v1.size())
         ));
-        fields.push_back(std::make_tuple("skal", 1, to_span(skal)));
         fields.push_back(std::make_tuple("fix0", 1, to_span(fix0)));
         fields.push_back(std::make_tuple("fix1", 1, to_span(fix1)));
         write_vtu("output/bord.vtu", to_span(m.P), to_span(m.T), fields);
     }
 
+    
+    SpMat par_shape_mass = par_shape.transpose() * border_mat.transpose() * edge_mass_mat * border_mat * par_shape;
+
+    Eigen::KLU<SpMat> par_shape_mass_inv;
+    par_shape_mass_inv.compute(par_shape_mass);
+    assert(par_shape_mass_inv.info() == Eigen::Success);
+    
     size_t NPAR = NPAR_SHAPE + NPAR_DEPTH;
 
     n_bord = nBP;
@@ -480,8 +500,10 @@ int main(int argc, char **argv) {
             total_grad_shape.setZero();
             total_grad_depth.setZero();
         }
-        std::vector<std::pair<double, double> > objs; 
-        for(size_t kidx = 0; kidx < KINT; kidx++) {
+        Eigen::Array<double, 2+NOBJ, Eigen::Dynamic> objs(2+NOBJ, KINT);
+        Eigen::VectorXd P_grad(DOF); P_grad.setZero();
+        Eigen::VectorXd D_grad(m.nP); D_grad.setZero();
+        const auto& solve_problem = [&](size_t kidx) {
             double wave_k = integral_k(kidx);
             Eigen::VectorXd weights = integral_weights.col(kidx);
             Eigen::VectorXd x(DOF); x.setZero();
@@ -537,9 +559,14 @@ int main(int argc, char **argv) {
                 double resL2 = res.norm();
                 printf("Residual (after): %lg\n", resL2);
             }
-            printf("obj:%lg\n", obj[0]);
-            total_obj += weights.dot(obj);
-            objs.push_back(std::make_pair(wave_k, obj[0]));
+            printf("obj:");
+            for (int k=0;k<NOBJ;k++) printf(" %lg", obj[k]);
+            double wobj = weights.dot(obj);
+            printf(" -> %lg\n", wobj);
+            total_obj += wobj;
+            objs(0,kidx) = wave_k;
+            objs(1,kidx) = total_obj;
+            for (int k=0;k<NOBJ;k++) objs(2+k,kidx) = obj[k];
 
             Eigen::VectorXd Pb(DOF); Pb.setZero();
             // ADJOINT
@@ -563,25 +590,8 @@ int main(int argc, char **argv) {
                 }
                 
                 problem_bP(wave_k, P1.data(), Pb.data(), D.data(), Db.data(), x.data(), res_tmp.data(), resb.data(), obj_tmp.data(), objb.data());
-
-                Eigen::VectorXd res_morphb;
-                {   
-                    printf("Solving adjoint morph");
-                    Eigen::KLU<SpMat> solver;  // performs a Cholesky factorization of A
-                    printf(" [compute]");
-                    solver.compute(K.transpose()); assert(solver.info() == Eigen::Success);
-                    printf(" [solve]");
-                    res_morphb = solver.solve(-Pb); assert(solver.info() == Eigen::Success);
-                    printf(" [done]\n");
-                }
-
-                Eigen::VectorXd dir_dispb(nBP*2); dir_dispb.setZero();
-                morph_energy_fix_b(m.P.data(), P1.data(), dir_disp.data(), dir_dispb.data(), res_morph.data(), res_morphb.data(), energy_weights.data());
-
-                Eigen::VectorXd grad_shape = dir_dispb.transpose() * par_shape;
-                total_grad_shape += grad_shape;
-                Eigen::VectorXd grad_depth = Db.transpose() * par_depth;
-                total_grad_depth += grad_depth;
+                P_grad += Pb;
+                D_grad += Db;
             }
             if (export_all || (kidx == KINT-1)) {
                 char buf[1024];
@@ -592,14 +602,48 @@ int main(int argc, char **argv) {
                     std::make_tuple(std::string("depth"), 1, to_span(D))
                 });
             }
+        };
+        //for(size_t kidx = 0; kidx < KINT; kidx++) solve_problem(kidx);
+        {
+            std::atomic<size_t> akidx = 0;
+            std::vector<std::jthread> thr;
+            for (int i=0;i<5;i++) {
+                thr.push_back(std::jthread([&](){
+                    for(size_t kidx = (akidx++); kidx < KINT; kidx = (akidx++)) solve_problem(kidx);
+                }));
+            }
+        }
+        if (grad_ != NULL) {
+            Eigen::VectorXd res_morphb;
+            {   
+                printf("Solving adjoint morph");
+                Eigen::KLU<SpMat> solver;  // performs a Cholesky factorization of A
+                printf(" [compute]");
+                solver.compute(K.transpose()); assert(solver.info() == Eigen::Success);
+                printf(" [solve]");
+                res_morphb = solver.solve(-P_grad); assert(solver.info() == Eigen::Success);
+                printf(" [done]\n");
+            }
+
+            Eigen::VectorXd dir_dispb(nBP*2); dir_dispb.setZero();
+            morph_energy_fix_b(m.P.data(), P1.data(), dir_disp.data(), dir_dispb.data(), res_morph.data(), res_morphb.data(), energy_weights.data());
+
+            Eigen::VectorXd grad_shape = dir_dispb.transpose() * par_shape;
+            total_grad_shape += grad_shape;
+            Eigen::VectorXd grad_depth = D_grad.transpose() * par_depth;
+            total_grad_depth += grad_depth;
         }
         {
             char buf[1024];
             sprintf(buf, "output/res_%04d.csv", iter);
             FILE* f = fopen(buf, "w");
             fprintf(f, "wave_k,obj\n");
-            for (size_t i=0;i<objs.size();i++) {
-                fprintf(f, "%.15lg, %.15lg\n", objs[i].first, objs[i].second);
+            for (size_t j=0;j<objs.cols();j++) {
+                for (size_t i=0;i<objs.rows();i++) {
+                    fprintf(f, "%.15lg", objs(i,j));
+                    if (i+1<objs.rows()) fprintf(f, ", ");
+                }
+                fprintf(f, "\n");
             }
             fclose(f);
         }
@@ -625,7 +669,7 @@ int main(int argc, char **argv) {
         return total_obj;
     };
     
-    if (false) { // FD test
+    if (true) { // FD test
         Eigen::VectorXd pr(NPAR); pr.setZero();
         Eigen::VectorXd gr(NPAR);
         pr(2) += 0.1;
@@ -645,7 +689,14 @@ int main(int argc, char **argv) {
     }
 
     const auto& precond = [&](const double *grad_, double* direction_) {
-
+        //printf("Called precond!\n"); exit(0);
+        Eigen::Map< const Eigen::VectorXd > grad_shape(grad_, NPAR_SHAPE);
+        Eigen::Map< const Eigen::VectorXd > grad_depth(grad_ + NPAR_SHAPE, NPAR_DEPTH);
+        Eigen::Map< Eigen::VectorXd > direction_shape(direction_, NPAR_SHAPE);
+        Eigen::Map< Eigen::VectorXd > direction_depth(direction_ + NPAR_SHAPE, NPAR_DEPTH);
+        Eigen::VectorXd ret = par_shape_mass_inv.solve(grad_shape);
+        direction_shape = ret;
+        direction_depth = grad_depth;
     };
 
     using obj_type = decltype(objective);
@@ -666,8 +717,8 @@ int main(int argc, char **argv) {
 
     Eigen::VectorXd lower(NPAR); lower.setZero();
     Eigen::VectorXd upper(NPAR); upper.setZero();
-    for (size_t i=0;i<NPAR_SHAPE; i++) {
 
+    for (size_t i=0;i<NPAR_SHAPE; i++) {
         lower(i) = -0.2;
         upper(i) =  1.0;
     }

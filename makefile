@@ -2,12 +2,16 @@ CXXFLAGS+=-I/usr/include/eigen3/ -I/usr/include/suitesparse/ -std=c++20
 CXXFLAGS+=-O3 -fopenmp
 CFLAGS+=-O3 -fopenmp
 CXXFLAGS+=-Wno-unused-result -Wno-write-strings
+NLOPT=/home/llaniewski/repo/third/nlopt/build
+LDFLAGS+=-Wl,-rpath $(NLOPT)
+LDFLAGS+=-L$(NLOPT)
+LDFLAGS+=-lklu -lnlopt
 # CXXFLAGS+=-g
 # CFLAGS+=-g
 TAPENADE=$(HOME)/tapenade/tapenade_3.16/bin/tapenade
 
 main: main.o vtu_write.o solve.o problem.o problem_d.o problem_b.o morph_energy_fix_g_d.o morph_energy_fix_g_b.o morph_energy_fix_g.o
-	$(CXX) $(CXXFLAGS) -o $@ $^ -lklu -lnlopt
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
 problem_d.c : problem.c
 	$(TAPENADE) -fixinterface -d -head 'problem(res)/(x)' $<
