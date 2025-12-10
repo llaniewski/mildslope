@@ -2,7 +2,7 @@ CXXFLAGS+=-I/usr/include/eigen3/ -I/usr/include/suitesparse/ -std=c++20
 CXXFLAGS+=-O3 -fopenmp
 CFLAGS+=-O3 -fopenmp
 CXXFLAGS+=-Wno-unused-result -Wno-write-strings
-NLOPT=/home/llaniewski/repo/third/nlopt/build
+NLOPT=$(HOME)/repo/nlopt/build
 LDFLAGS+=-Wl,-rpath $(NLOPT)
 LDFLAGS+=-L$(NLOPT)
 LDFLAGS+=-lklu -lnlopt

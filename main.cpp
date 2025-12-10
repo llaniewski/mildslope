@@ -514,7 +514,8 @@ int main(int argc, char **argv) {
             Eigen::VectorXd obj_tmp(NOBJ);
             SpMat A(DOF,DOF);
             bool do_exit = false;
-            for(int iter_problem = 0; iter_problem < iter_problem_max; iter_problem++) {
+            //for(int iter_problem = 0; iter_problem < iter_problem_max; iter_problem++) {
+            {   int iter_problem = 0;
                 problem(wave_k, P1.data(), D.data(), x.data(), res.data(), obj.data());
 
                 {
@@ -522,7 +523,7 @@ int main(int argc, char **argv) {
                     printf("%8d %6lg %3d Residual (problem): %lg\n", iter, wave_k, iter_problem, resL2);
                     if (resL2 < 1e-8) do_exit = true;
                 }
-                if (grad_ == NULL && do_exit) break;
+            //    if (grad_ == NULL && do_exit) break;
       
                 {
                     Eigen::VectorXd Mx(DOF);
@@ -542,7 +543,7 @@ int main(int argc, char **argv) {
                     A.setFromTriplets(coef.begin(), coef.end());
                     printf(" [done]\n");
                 }
-                if (grad_ != NULL && do_exit) break;
+            //    if (grad_ != NULL && do_exit) break;
                 {
                     printf("Solving linear problem");
                     Eigen::KLU<SpMat> solver;  // performs a Cholesky factorization of A
@@ -564,13 +565,9 @@ int main(int argc, char **argv) {
             for (int k=0;k<NOBJ;k++) printf(" %lg", obj[k]);
             double wobj = weights.dot(obj);
             printf(" -> %lg\n", wobj);
-            total_obj += wobj;
-            {
-                std::lock_guard<std::mutex> lock(outputs_mutex);
-                objs(0,kidx) = wave_k;
-                objs(1,kidx) = total_obj;
-                for (int k=0;k<NOBJ;k++) objs(2+k,kidx) = obj[k];
-            }
+            objs(0,kidx) = wave_k;
+            objs(1,kidx) = wobj;
+            for (int k=0;k<NOBJ;k++) objs(2+k,kidx) = obj[k];
             Eigen::VectorXd Pb(DOF); Pb.setZero();
             // ADJOINT
             if (grad_ != NULL) {
@@ -639,15 +636,21 @@ int main(int argc, char **argv) {
             Eigen::VectorXd grad_depth = D_grad.transpose() * par_depth;
             total_grad_depth += grad_depth;
         }
+        total_obj = 0;
+        for (size_t j=0;j<objs.cols();j++) total_obj += objs(1,j);
         {
             char buf[1024];
             sprintf(buf, "output/res_%04d.csv", iter);
             FILE* f = fopen(buf, "w");
-            fprintf(f, "wave_k,obj\n");
+            fprintf(f, "idx, wave_k, objw");
+            for (size_t i=0;i<NOBJ;i++) {
+                fprintf(f, ", obj%d", i);
+            }
+            fprintf(f, "\n");
             for (size_t j=0;j<objs.cols();j++) {
+                fprintf(f, "%ld", (long int) j);
                 for (size_t i=0;i<objs.rows();i++) {
-                    fprintf(f, "%.15lg", objs(i,j));
-                    if (i+1<objs.rows()) fprintf(f, ", ");
+                    fprintf(f, ", %.15lg", objs(i,j));
                 }
                 fprintf(f, "\n");
             }
@@ -701,6 +704,7 @@ int main(int argc, char **argv) {
         Eigen::Map< Eigen::VectorXd > direction_shape(direction_, NPAR_SHAPE);
         Eigen::Map< Eigen::VectorXd > direction_depth(direction_ + NPAR_SHAPE, NPAR_DEPTH);
         Eigen::VectorXd ret = par_shape_mass_inv.solve(grad_shape);
+        ret = ret * (grad_shape.norm()/ret.norm());
         direction_shape = ret;
         direction_depth = grad_depth;
     };
@@ -725,8 +729,8 @@ int main(int argc, char **argv) {
     Eigen::VectorXd upper(NPAR); upper.setZero();
 
     for (size_t i=0;i<NPAR_SHAPE; i++) {
-        lower(i) = -0.2;
-        upper(i) =  1.0;
+        lower(i) =  par_shape_limits(i,0);
+        upper(i) =  par_shape_limits(i,1);
     }
     for (size_t i=0;i<NPAR_DEPTH; i++) {
         lower(i + NPAR_SHAPE) = -0.5;
@@ -736,7 +740,7 @@ int main(int argc, char **argv) {
     opt_res = nlopt_set_lower_bounds(opt, lower.data());
     opt_res = nlopt_set_upper_bounds(opt, upper.data());
     opt_res = nlopt_set_maxeval(opt, 500);
-
+    opt_res = nlopt_set_ftol_abs(opt, 1e-8);
     Eigen::VectorXd pr(NPAR); pr.setZero();
     double obj = 0;
     opt_res = nlopt_optimize(opt, pr.data(), &obj);
