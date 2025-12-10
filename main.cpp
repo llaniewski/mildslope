@@ -324,7 +324,7 @@ int main(int argc, char **argv) {
                     if (fabs(skal) < 0.5) {
                         shape_par.push_back(std::make_tuple(2*j+1,scale,-sides,sides));
                     } else {
-                        //border_fix(1,j) = 0.0;
+                        border_fix(1,j) = 0.0;
                     }
                 }
                 j++;
@@ -411,15 +411,19 @@ int main(int argc, char **argv) {
             if ((i == 0) || (i == KINT-1)) weight = weight/2;
             double wave_k = wave_k_min + i*k_dist;
             integral_k(i) = wave_k;
-            integral_weights(0,i) = weight;
+            // if (i*2 < KINT) {
+                integral_weights(0,i) = weight;
+            // } else {
+            //     integral_weights(1,i) = weight;
+            // }
         }
     }
 
     Eigen::VectorXd D0(m.nP);
     for (size_t i=0; i<D0.size(); i++) D0(i) = 1;
 
-    const int iter_morph_ramp = 100;
-    const int iter_morph_max = 500;
+    //const int iter_morph_ramp = 100;
+    const int iter_morph_max = 15;
     const int iter_problem_max = 20;
     int iter = 0;
     const auto& objective = [&](const double *pr_, double* grad_, bool export_all=false) -> double {
