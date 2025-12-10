@@ -142,7 +142,8 @@ int main(int argc, char **argv) {
     mesh m;
 
     m.read_mesh(mesh_name);
-
+    int iter = 0;
+start:
     const size_t DOFperP = 2;
     const size_t DOF = m.nP*DOFperP;
 
@@ -324,7 +325,7 @@ int main(int argc, char **argv) {
                     if (fabs(skal) < 0.5) {
                         shape_par.push_back(std::make_tuple(2*j+1,scale,-sides,sides));
                     } else {
-                        border_fix(1,j) = 0.0;
+                        //border_fix(1,j) = 0.0;
                     }
                 }
                 j++;
@@ -420,12 +421,13 @@ int main(int argc, char **argv) {
     }
 
     Eigen::VectorXd D0(m.nP);
+    Eigen::Matrix<double, 2, Eigen::Dynamic> P1(2,m.nP);
     for (size_t i=0; i<D0.size(); i++) D0(i) = 1;
 
     //const int iter_morph_ramp = 100;
     const int iter_morph_max = 15;
     const int iter_problem_max = 20;
-    int iter = 0;
+    
     const auto& objective = [&](const double *pr_, double* grad_, bool export_all=false) -> double {
         Eigen::Map< const Eigen::VectorXd > pr_shape(pr_, NPAR_SHAPE);
         Eigen::Map< const Eigen::VectorXd > pr_depth(pr_ + NPAR_SHAPE, NPAR_DEPTH);
@@ -435,7 +437,7 @@ int main(int argc, char **argv) {
         D = D0 + par_depth * pr_depth;
         dir_disp = par_shape * pr_shape;
 
-        Eigen::Matrix<double, 2, Eigen::Dynamic> P1 = m.P;
+        P1 = m.P;
         Eigen::VectorXd res_morph(DOF);
         bool do_exit = false;
         SpMat K(DOF,DOF);
@@ -505,10 +507,13 @@ int main(int argc, char **argv) {
             total_grad_depth.setZero();
         }
         std::mutex outputs_mutex;
+        std::mutex print_mutex;
+        std::vector<bool> kdone(KINT);
+        for (size_t i=0;i<kdone.size();i++) kdone[i] = false;
         Eigen::Array<double, 2+NOBJ, Eigen::Dynamic> objs(2+NOBJ, KINT); objs.setZero();
         Eigen::VectorXd P_grad(DOF); P_grad.setZero();
         Eigen::VectorXd D_grad(m.nP); D_grad.setZero();
-        const auto& solve_problem = [&](size_t kidx) {
+        const auto& solve_problem = [&](size_t kidx, bool print=false) {
             double wave_k = integral_k(kidx);
             Eigen::VectorXd weights = integral_weights.col(kidx);
             Eigen::VectorXd x(DOF); x.setZero();
@@ -524,16 +529,16 @@ int main(int argc, char **argv) {
 
                 {
                     double resL2 = res.norm();
-                    printf("%8d %6lg %3d Residual (problem): %lg\n", iter, wave_k, iter_problem, resL2);
+                    if (print) printf("%8d %6lg %3d Residual (problem): %lg\n", iter, wave_k, iter_problem, resL2);
                     if (resL2 < 1e-8) do_exit = true;
                 }
             //    if (grad_ == NULL && do_exit) break;
       
                 {
                     Eigen::VectorXd Mx(DOF);
-                    printf("Gathering Jacobian");
+                    if (print) printf("Gathering Jacobian");
                     std::vector<Trip> coef;
-                    printf(" [mult]");
+                    if (print) printf(" [mult]");
                     for (size_t k=0; k<maxk; k++) {
                         problem_d(wave_k, P1.data(), D.data(), x.data(), ref_x.col(k).data(), res_tmp.data(), Mx.data(), obj_tmp.data());
                         for (size_t j=0; j<DOF; j++){
@@ -543,19 +548,19 @@ int main(int argc, char **argv) {
                         }
                         //printf("mult %ld -> %ld\n", k, coef.size());
                     }
-                    printf(" [sparse]");
+                    if (print) printf(" [sparse]");
                     A.setFromTriplets(coef.begin(), coef.end());
-                    printf(" [done]\n");
+                    if (print) printf(" [done]\n");
                 }
             //    if (grad_ != NULL && do_exit) break;
                 {
-                    printf("Solving linear problem");
+                    if (print) printf("Solving linear problem");
                     Eigen::KLU<SpMat> solver;  // performs a Cholesky factorization of A
-                    printf(" [compute]");
+                    if (print) printf(" [compute]");
                     solver.compute(A); assert(solver.info() == Eigen::Success);
-                    printf(" [solve]");
+                    if (print) printf(" [solve]");
                     Eigen::VectorXd ret = solver.solve(res); assert(solver.info() == Eigen::Success);
-                    printf(" [done]\n");
+                    if (print) printf(" [done]\n");
                     for (size_t i=0; i<ret.size(); i++) x[i] -= ret[i];
                 }
             }
@@ -563,12 +568,14 @@ int main(int argc, char **argv) {
             problem(wave_k, P1.data(), D.data(), x.data(), res.data(), obj.data());
             {
                 double resL2 = res.norm();
-                printf("Residual (after): %lg\n", resL2);
+                if (print) printf("Residual (after): %lg\n", resL2);
             }
-            printf("obj:");
-            for (int k=0;k<NOBJ;k++) printf(" %lg", obj[k]);
             double wobj = weights.dot(obj);
-            printf(" -> %lg\n", wobj);
+            if (print) {
+                printf("obj:");
+                for (int k=0;k<NOBJ;k++) printf(" %lg", obj[k]);
+                printf(" -> %lg\n", wobj);
+            }
             objs(0,kidx) = wave_k;
             objs(1,kidx) = wobj;
             for (int k=0;k<NOBJ;k++) objs(2+k,kidx) = obj[k];
@@ -584,13 +591,13 @@ int main(int argc, char **argv) {
 
                 Eigen::VectorXd resb;
                 {   
-                    printf("Solving adjoint problem");
+                    if (print) printf("Solving adjoint problem");
                     Eigen::KLU<SpMat> solver;  // performs a Cholesky factorization of A
-                    printf(" [compute]");
+                    if (print) printf(" [compute]");
                     solver.compute(A.transpose()); assert(solver.info() == Eigen::Success);
-                    printf(" [solve]");
+                    if (print) printf(" [solve]");
                     resb = solver.solve(-xb); assert(solver.info() == Eigen::Success);
-                    printf(" [done]\n");
+                    if (print) printf(" [done]\n");
                 }
                 
                 problem_bP(wave_k, P1.data(), Pb.data(), D.data(), Db.data(), x.data(), res_tmp.data(), resb.data(), obj_tmp.data(), objb.data());
@@ -599,6 +606,13 @@ int main(int argc, char **argv) {
                     P_grad += Pb;
                     D_grad += Db;
                 }
+            }
+            if (!print) {
+                std::lock_guard<std::mutex> lock(print_mutex);        
+                kdone[kidx] = true;
+                printf("[");
+                for (size_t i=0;i<KINT;i++) if (kdone[i]) printf("X"); else printf(" ");
+                printf("]\r"); fflush(stdout);
             }
             if (export_all || (kidx == KINT-1)) {
                 char buf[1024];
@@ -619,6 +633,7 @@ int main(int argc, char **argv) {
                     for(size_t kidx = (akidx++); kidx < KINT; kidx = (akidx++)) solve_problem(kidx);
                 }));
             }
+            printf("\n");
         }
         if (grad_ != NULL) {
             Eigen::VectorXd res_morphb;
@@ -646,15 +661,15 @@ int main(int argc, char **argv) {
             char buf[1024];
             sprintf(buf, "output/res_%04d.csv", iter);
             FILE* f = fopen(buf, "w");
-            fprintf(f, "idx, wave_k, objw");
+            fprintf(f, "idx,wave_k,objw");
             for (size_t i=0;i<NOBJ;i++) {
-                fprintf(f, ", obj%d", i);
+                fprintf(f, ",obj%d", (int) i);
             }
             fprintf(f, "\n");
             for (size_t j=0;j<objs.cols();j++) {
                 fprintf(f, "%ld", (long int) j);
                 for (size_t i=0;i<objs.rows();i++) {
-                    fprintf(f, ", %.15lg", objs(i,j));
+                    fprintf(f, ",%.15lg", objs(i,j));
                 }
                 fprintf(f, "\n");
             }
@@ -665,7 +680,7 @@ int main(int argc, char **argv) {
         //     sprintf(buf, "output/res_%04d.points", iter);
         //     FILE* f = fopen(buf, "w");
         //     for (size_t i=0;i<nP;i++) {
-        //         fprintf(f, "%.15lg %.15lg\n", m.P(0,i), m.P(1,i));
+        //         fprintf(f, "%.15lg %.15lg\n", P1(0,i), P1(1,i));
         //     }
         //     fclose(f);
         // }
@@ -751,7 +766,8 @@ int main(int argc, char **argv) {
     std::cout << pr << "\n";
     printf("Objective: %lg\n", obj);
     objective(pr.data(),NULL,true);
-
+    m.P = P1;
+    goto start;
     // for (int k=0; k<60; k++) {
     //     double val = objective(pr.data(), gr.data());
     //     pr += -1e-3*gr;
