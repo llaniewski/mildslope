@@ -76,7 +76,7 @@ public:
     int read_mesh(const std::string& mesh_name) {
         FILE* f;
         int dim, bord, el_size, ignore;
-        f = fopen_safe(mesh_name+".node","rb");
+        f = fopen_safe(mesh_name+".node","r");
         fscanf(f, "%ld %d %ld %d", &nP, &dim, &nAttr, &bord);
         assert(dim == 2);
         P.resize(dim, nP);
@@ -91,7 +91,7 @@ public:
         }
         fclose(f);
         printf("Points %ld\n", nP);
-        f = fopen_safe(mesh_name+".ele","rb");
+        f = fopen_safe(mesh_name+".ele","r");
         fscanf(f, "%ld %d %d", &nT, &el_size, &bord);
         assert(el_size == 3);
         T.resize(el_size, nT);
@@ -104,7 +104,7 @@ public:
         }
         fclose(f);
         printf("Triangles: %ld\n", nT);
-        f = fopen_safe(mesh_name+".poly","rb");
+        f = fopen_safe(mesh_name+".poly","r");
         {
             size_t nP_, nAttr_;
             int dim_, bord_;
@@ -125,6 +125,41 @@ public:
         }
         fclose(f);
         printf("Border: %ld\n", nB);
+        return 0;
+    }
+    int write_mesh(const std::string& mesh_name) {
+        FILE* f;
+        int dim=2, el_size=3;
+        f = fopen_safe(mesh_name+".node","w");
+        fprintf(f, "%ld %d %ld %d\n", nP, dim, nAttr, 0/*bord*/);
+        for (size_t i=0;i<nP;i++) {
+            fprintf(f, "%ld", (long int) i+1);
+            for (int j=0;j<dim;j++) fprintf(f," %lf", P(j,i));
+            for (size_t j=0;j<nAttr;j++) fprintf(f," %lf", Attr(i,j));
+            fprintf(f,"\n");
+        }
+        fclose(f);
+        f = fopen_safe(mesh_name+".ele","w");
+        fprintf(f, "%ld %d %d\n", nT, el_size, 0/*bord*/);
+        for (size_t i=0;i<nT;i++) {
+            size_t idx;
+            fprintf(f, "%ld", (long int) i+1);
+            for (int j=0;j<el_size;j++) fprintf(f," %ld", T(j,i)+1);
+            fprintf(f,"\n");
+        }
+        fclose(f);
+        f = fopen_safe(mesh_name+".poly","w");
+        int bord = 1;
+        fprintf(f, "%ld %d %ld %d\n", nP, dim, nAttr, bord);
+        const int edge_size = 2;
+        fprintf(f, "%ld %d\n", nB, 1/*bord*/);        
+        for (size_t i=0;i<nB;i++) {
+            fprintf(f, "%ld", (long int) i+1);
+            for (int j=0;j<edge_size;j++) fprintf(f," %ld", B(j,i)+1);
+            for (int j=0;j<bord;j++) fprintf(f," %d", B_flag(i,j));
+            fprintf(f,"\n");
+        }
+        fclose(f);
         return 0;
     }
 };
@@ -257,11 +292,12 @@ start:
                 Eigen::Vector2d p2 = m.P.col(i2);
                 Eigen::Vector2d v = p1 - p0;
                 double len = v.norm();
+                double K_in_mat = 0.4;
                 for (int k=0; k<2; k++) {
-                    coef.push_back(Trip(i0*2+k,i0*2+k,len/3));
-                    coef.push_back(Trip(i0*2+k,i1*2+k,len/6));
-                    coef.push_back(Trip(i1*2+k,i0*2+k,len/6));
-                    coef.push_back(Trip(i1*2+k,i1*2+k,len/3));
+                    coef.push_back(Trip(i0*2+k,i0*2+k,len/3 + K_in_mat/2));
+                    coef.push_back(Trip(i0*2+k,i1*2+k,len/6 - K_in_mat/2));
+                    coef.push_back(Trip(i1*2+k,i0*2+k,len/6 - K_in_mat/2));
+                    coef.push_back(Trip(i1*2+k,i1*2+k,len/3 + K_in_mat/2));
                 }
                 //v.normalize();
                 double tmp = v(1); v(1) = -v(0); v(0) = tmp;
@@ -412,11 +448,12 @@ start:
             if ((i == 0) || (i == KINT-1)) weight = weight/2;
             double wave_k = wave_k_min + i*k_dist;
             integral_k(i) = wave_k;
-            // if (i*2 < KINT) {
-                integral_weights(0,i) = weight;
-            // } else {
-            //     integral_weights(1,i) = weight;
-            // }
+            integral_weights(0,i) = weight;
+            if (i*2 < KINT) {
+                //integral_weights(1,i) = weight;
+            } else {
+                integral_weights(1,i) = weight;
+            }
         }
     }
 
@@ -758,7 +795,7 @@ start:
 
     opt_res = nlopt_set_lower_bounds(opt, lower.data());
     opt_res = nlopt_set_upper_bounds(opt, upper.data());
-    opt_res = nlopt_set_maxeval(opt, 500);
+    opt_res = nlopt_set_maxeval(opt, 30);
     opt_res = nlopt_set_ftol_abs(opt, 1e-8);
     Eigen::VectorXd pr(NPAR); pr.setZero();
     double obj = 0;
@@ -767,7 +804,8 @@ start:
     printf("Objective: %lg\n", obj);
     objective(pr.data(),NULL,true);
     m.P = P1;
-    goto start;
+    m.write_mesh(mesh_name + ".after");
+    //goto start;
     // for (int k=0; k<60; k++) {
     //     double val = objective(pr.data(), gr.data());
     //     pr += -1e-3*gr;

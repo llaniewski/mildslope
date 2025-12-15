@@ -1,6 +1,6 @@
-write.poly = function(filename, points, segments) {
+write.poly = function(filename, points, segments,limits = c(-0.2,1)) {
     f = file(filename,open="w")
-    p = cbind(points$x,points$y,ifelse(points$par,1,0),ifelse(points$par,-0.2,0))
+    p = cbind(points$x,points$y,ifelse(points$par,limits[2],0),ifelse(points$par,limits[1],0))
     p = cbind(1:nrow(p),p)
     write.table(t(c(nrow(p),2,ncol(p)-3,0)), file=f,row.names=FALSE,col.names=FALSE)
     write.table(p, file=f,row.names=FALSE,col.names=FALSE)
@@ -33,7 +33,7 @@ n = nrow(points)
 segments = data.frame(
     i1 = 1:n,
     i2 = c(2:n,1),
-    tag = c(1,rep(3,npar+3),2,3,rep(4,ncirc-1),3)
+    tag = c(2,rep(1,npar+3),3,1,rep(1,ncirc-1),1)
 )
 
 plot(points$x,points$y,asp=1)
@@ -71,6 +71,48 @@ segments(
 )
 
 write.poly("side_channel.poly",points, segments)
+
+
+
+k = 0
+ncirc=5
+a = seq(0,pi,len=ncirc)
+eps = 0.02
+d = xpar
+points = data.frame(
+    x=c(
+        -5,seq(-xpar,xpar,len=npar+2),5,
+        5,d-eps*sin(a),5,
+        5,seq(xpar,-xpar,len=npar+2),-5
+    ),
+    y=c(
+        rep(0.5,npar+4),
+        eps,eps*cos(a),-eps,
+        rep(-0.5,npar+4)
+    ),
+    par=c(
+        rep(FALSE,2),rep(TRUE,npar),rep(FALSE,2),
+        rep(FALSE,2+ncirc),
+        rep(FALSE,2),rep(TRUE,npar),rep(FALSE,2)
+    )
+)
+
+n = nrow(points)
+segments = data.frame(
+    i1 = 1:n,
+    i2 = c(2:n,1),
+    tag = c(
+        rep(1,npar+3),3,rep(1,ncirc+1),4,rep(1,npar+3),2)
+)
+
+plot(points$x,points$y,asp=1,pch=16,cex=ifelse(points$par,1,0.3))
+segments(
+    points$x[segments$i1],points$y[segments$i1],
+    points$x[segments$i2],points$y[segments$i2],
+    col=segments$tag
+)
+
+write.poly("split.poly",points, segments, limits=c(-0.1,0.1))
 
 
 k = 0
