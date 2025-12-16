@@ -484,7 +484,7 @@ start:
     const int iter_morph_max = 15;
     const int iter_problem_max = 20;
     
-    const auto& objective = [&](const double *pr_, double* grad_, bool export_all=false) -> double {
+    const auto& objective = [&](const double *pr_, double* grad_, bool export_all=false, bool print=false) -> double {
         Eigen::Map< const Eigen::VectorXd > pr_shape(pr_, NPAR_SHAPE);
         Eigen::Map< const Eigen::VectorXd > pr_depth(pr_ + NPAR_SHAPE, NPAR_DEPTH);
         Eigen::VectorXd D;
@@ -505,7 +505,7 @@ start:
                 fields.push_back(std::make_tuple("res", 2, to_span(res_morph)));
                 char buf[1024];
                 sprintf(buf, "output/morph_%04d_%04d.vtu", iter, iter_morph);
-                write_vtu(buf, to_span(P1), to_span(m.T), fields);
+                write_vtu(buf, to_span(P1), to_span(m.T), fields, {}, print);
             }
 
             {
@@ -516,9 +516,9 @@ start:
             if (grad_ == NULL && do_exit) break;
             
             {
-                printf("Gathering morphing energy Hessian at 0");
+                if (print) printf("Gathering morphing energy Hessian at 0");
                 std::vector<Trip> coef;
-                printf(" [mult]");
+                if (print) printf(" [mult]");
                 Eigen::VectorXd res_tmp(DOF);
                 Eigen::VectorXd energy_tmp(2);
                 
@@ -533,19 +533,19 @@ start:
                         }
                     }
                 }
-                printf(" [sparse]");
+                if (print) printf(" [sparse]");
                 K.setFromTriplets(coef.begin(), coef.end());
-                printf(" [done]\n");
+                if (print) printf(" [done]\n");
             }
             if (grad_ != NULL && do_exit) break;
             {
-                printf("Solving linear problem");
+                if (print) printf("Solving linear problem");
                 Eigen::KLU<SpMat> solver;  // performs a Cholesky factorization of A
-                printf(" [compute]");
+                if (print) printf(" [compute]");
                 solver.compute(K); assert(solver.info() == Eigen::Success);
-                printf(" [solve]");
+                if (print) printf(" [solve]");
                 Eigen::VectorXd ret = solver.solve(res_morph);
-                printf(" [done]\n");
+                if (print) printf(" [done]\n");
                 // double coef = 1;
                 // if (iter_morph < iter_morph_ramp) {
                 //     coef = (iter_morph+1.0) / iter_morph_ramp;
@@ -677,7 +677,7 @@ start:
                     std::make_tuple(std::string("Eta"), 2, to_span(x)),
                     std::make_tuple(std::string("Pb"), 2, to_span(Pb)),
                     std::make_tuple(std::string("depth"), 1, to_span(D))
-                });
+                }, {}, print);
             }
         };
         //for(size_t kidx = 0; kidx < KINT; kidx++) solve_problem(kidx);
@@ -689,18 +689,18 @@ start:
                     for(size_t kidx = (akidx++); kidx < KINT; kidx = (akidx++)) solve_problem(kidx);
                 }));
             }
-            printf("\n");
         }
+        printf("\n");
         if (grad_ != NULL) {
             Eigen::VectorXd res_morphb;
             {   
-                printf("Solving adjoint morph");
+                if (print) printf("Solving adjoint morph");
                 Eigen::KLU<SpMat> solver;  // performs a Cholesky factorization of A
-                printf(" [compute]");
+                if (print) printf(" [compute]");
                 solver.compute(K.transpose()); assert(solver.info() == Eigen::Success);
-                printf(" [solve]");
+                if (print) printf(" [solve]");
                 res_morphb = solver.solve(-P_grad); assert(solver.info() == Eigen::Success);
-                printf(" [done]\n");
+                if (print) printf(" [done]\n");
             }
 
             Eigen::VectorXd dir_dispb(nBP*2); dir_dispb.setZero();
@@ -731,24 +731,7 @@ start:
             }
             fclose(f);
         }
-        // {
-        //     char buf[1024];
-        //     sprintf(buf, "output/res_%04d.points", iter);
-        //     FILE* f = fopen(buf, "w");
-        //     for (size_t i=0;i<nP;i++) {
-        //         fprintf(f, "%.15lg %.15lg\n", P1(0,i), P1(1,i));
-        //     }
-        //     fclose(f);
-        // }
-        // {
-        //     char buf[1024];
-        //     sprintf(buf, "output/mesh_%04d.triangles", iter);
-        //     FILE* f = fopen(buf, "w");
-        //     for (size_t i=0;i<m.nT;i++) {
-        //         fprintf(f, "%ld %ld %ld\n", T[3*i+0], T[3*i+1], T[3*i+2]);
-        //     }
-        //     fclose(f);
-        // }
+        printf("Obj: %lg\n", total_obj);
         iter++;
         return total_obj;
     };
@@ -819,8 +802,7 @@ start:
     Eigen::VectorXd pr(NPAR); pr.setZero();
     double obj = 0;
     opt_res = nlopt_optimize(opt, pr.data(), &obj);
-    std::cout << pr << "\n";
-    printf("Objective: %lg\n", obj);
+    printf("Obj: %lg -- finished nlopt\n", obj);
     objective(pr.data(),NULL,false);
     m.P = P1;
     mesh_idx++;

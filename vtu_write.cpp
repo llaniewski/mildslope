@@ -4,8 +4,9 @@
 #include <stdlib.h>
 
 void write_vtu(char* filename, std::span<double> points, std::span<size_t> triangles,
-    const std::vector<std::tuple<std::string, int, std::span<double>>> point_fields,
-    const std::vector<std::tuple<std::string, int, std::span<double>>> cell_fields) {
+        const std::vector<std::tuple<std::string, int, std::span<double>>> point_fields,
+        const std::vector<std::tuple<std::string, int, std::span<double>>> cell_fields,
+        bool print) {
     FILE* f = fopen(filename, "w");
     if (f == NULL) {
         fprintf(stderr, "Failed to open file: %s\n", filename);
@@ -17,7 +18,7 @@ void write_vtu(char* filename, std::span<double> points, std::span<size_t> trian
         fprintf(stderr, "Wrong number of points or triangles\n");
         exit(-1);
     }
-    printf("Writing '%s'", filename);
+    if (print) printf("Writing '%s'", filename);
     fprintf(f, "<VTKFile type=\"UnstructuredGrid\" version=\"1.0\" byte_order=\"LittleEndian\" header_type=\"UInt64\">\n");
     fprintf(f, "  <UnstructuredGrid>\n");
     fprintf(f, "    <Piece NumberOfPoints=\"%ld\" NumberOfCells=\"%ld\">\n", npoints, ncells);
@@ -31,7 +32,7 @@ void write_vtu(char* filename, std::span<double> points, std::span<size_t> trian
             fprintf(stderr, "Wrong number of elements in field %s\n", name.c_str());
             exit(-1);
         }
-        printf(" [%s]", name.c_str());
+        if (print) printf(" [%s]", name.c_str());
         fprintf(f, "        <DataArray type=\"Float64\" Name=\"%s\" NumberOfComponents=\"%d\" format=\"ascii\">\n", name.c_str(), comp);
         for (size_t i=0; i<vals.size(); i++) {
             fprintf(f, " %.15lg", vals[i]);
@@ -51,7 +52,7 @@ void write_vtu(char* filename, std::span<double> points, std::span<size_t> trian
             fprintf(stderr, "Wrong number of elements in field %s\n", name.c_str());
             exit(-1);
         }
-        printf(" [%s]", name.c_str());
+        if (print) printf(" [%s]", name.c_str());
         fprintf(f, "        <DataArray type=\"Float64\" Name=\"%s\" NumberOfComponents=\"%d\" format=\"ascii\">\n", name.c_str(), comp);
         for (size_t i=0; i<vals.size(); i++) {
             fprintf(f, " %.15lg", vals[i]);
@@ -61,7 +62,7 @@ void write_vtu(char* filename, std::span<double> points, std::span<size_t> trian
         fprintf(f, "        </DataArray>\n");
     }
     fprintf(f, "      </CellData>\n");
-    printf(" [mesh]");
+    if (print) printf(" [mesh]");
     fprintf(f, "      <Points>\n");
     fprintf(f, "        <DataArray type=\"Float64\" Name=\"Points\" NumberOfComponents=\"3\" format=\"ascii\">");
     for (size_t i=0; i<points.size(); i++) {
@@ -100,5 +101,5 @@ void write_vtu(char* filename, std::span<double> points, std::span<size_t> trian
     fprintf(f, "</VTKFile>\n");
     fprintf(f, "\n");
     fclose(f);
-    printf(" [done]\n");
+    if (print) printf(" [done]\n");
 }

@@ -12,7 +12,8 @@ void write_vtu(
     std::span<double> points,
     std::span<size_t> triangles,
     const std::vector<std::tuple<std::string, int, std::span<double>>> point_fields={},
-    const std::vector<std::tuple<std::string, int, std::span<double>>> cell_fields={}
+    const std::vector<std::tuple<std::string, int, std::span<double>>> cell_fields={},
+    bool print=true
 );
 
 #endif
