@@ -14,40 +14,109 @@ write.poly = function(filename, points, segments,limits = c(-0.2,1)) {
 }
 
 
-r = 0.6/2
+
 npar = 60
 xpar = 2
-ncirc = 30
+for (d in seq(0.1,0.9,0.1)) {
+    r = d/2
+    ncirc = ceiling(r*pi/0.03)+1
+    k = 0
+
+    a = seq(0,pi,len=ncirc)
+    points = data.frame(
+        x=c(-5,-5,seq(-xpar,xpar,len=npar+2),5,5,r*cos(a)),
+        y=c(0,rep(0.5,npar+4),0,r*sin(a)),
+        par=c(rep(FALSE,3),rep(TRUE,npar),rep(FALSE,3+ncirc))
+    )
+
+
+    n = nrow(points)
+    segments = data.frame(
+        i1 = 1:n,
+        i2 = c(2:n,1),
+        tag = c(2,rep(1,npar+3),3,1,rep(1,ncirc-1),1)
+    )
+
+    plot(points$x,points$y,asp=1)
+    segments(
+        points$x[segments$i1],points$y[segments$i1],
+        points$x[segments$i2],points$y[segments$i2],
+        col=segments$tag
+    )
+
+    write.poly(sprintf("circ_%02.0f.poly",d*100),points, segments)
+}
+
+
+npar = 60
+xpar = 2
+eps = 0.005
+ncirc = ceiling(eps*pi/0.03)+1
+for (d in seq(0.1,0.9,0.1)) {
+    r = d/2
+    
+    k = 0
+    a = seq(0,pi,len=ncirc)
+    points = data.frame(
+        x=c(-5,-5,seq(-xpar,xpar,len=npar+2),5,5,eps,eps*cos(a),-eps),
+        y=c(0,rep(0.5,npar+4),0,0,r-max(eps*sin(a))+eps*sin(a),0),
+        par=c(rep(FALSE,3),rep(TRUE,npar),rep(FALSE,3+ncirc+2))
+    )
+
+    n = nrow(points)
+    segments = data.frame(
+        i1 = 1:n,
+        i2 = c(2:n,1),
+        tag = c(2,rep(1,npar+3),3,1,rep(1,ncirc-1+2),1)
+    )
+
+    plot(points$x,points$y,asp=1)
+    segments(
+        points$x[segments$i1],points$y[segments$i1],
+        points$x[segments$i2],points$y[segments$i2],
+        col=segments$tag
+    )
+
+    write.poly(sprintf("wall_%02.0f.poly",d*100),points, segments)
+}
+
+npar = 100
+xpar = 2
+eps = 0.005
+ncirc = ceiling(eps*pi/0.03)+1
+for (d in seq(0.1,0.9,0.1)) {
+    r = d/2
+    
+    k = 0
+    a = seq(0,pi,len=ncirc)
+    x = seq(-xpar,xpar,len=npar+2)
+    alpha = 8.7
+    y = 0.5 + r*sin(x*alpha)/(x*alpha)
+    points = data.frame(
+        x=c(-5,-5,x,5,5,eps,eps*cos(a),-eps),
+        y=c(0,0.5,y,0.5,0,0,r-max(eps*sin(a))+eps*sin(a),0),
+        par=c(rep(FALSE,3),rep(TRUE,npar),rep(FALSE,3+ncirc+2))
+    )
+
+    n = nrow(points)
+    segments = data.frame(
+        i1 = 1:n,
+        i2 = c(2:n,1),
+        tag = c(2,rep(1,npar+3),3,1,rep(1,ncirc-1+2),1)
+    )
+
+    plot(points$x,points$y,asp=1)
+    segments(
+        points$x[segments$i1],points$y[segments$i1],
+        points$x[segments$i2],points$y[segments$i2],
+        col=segments$tag
+    )
+
+    write.poly(sprintf("sinc_%02.0f.poly",d*100),points, segments)
+}
+
 
 k = 0
-
-a = seq(0,pi,len=ncirc)
-points = data.frame(
-    x=c(-5,-5,seq(-xpar,xpar,len=npar+2),5,5,r*cos(a)),
-    y=c(0,rep(0.5,npar+4),0,r*sin(a)),
-    par=c(rep(FALSE,3),rep(TRUE,npar),rep(FALSE,3+ncirc))
-)
-
-
-n = nrow(points)
-segments = data.frame(
-    i1 = 1:n,
-    i2 = c(2:n,1),
-    tag = c(2,rep(1,npar+3),3,1,rep(1,ncirc-1),1)
-)
-
-plot(points$x,points$y,asp=1)
-segments(
-    points$x[segments$i1],points$y[segments$i1],
-    points$x[segments$i2],points$y[segments$i2],
-    col=segments$tag
-)
-
-write.poly("circ_20.poly",points, segments)
-
-
-k = 0
-
 npar_half = floor(npar/2)
 a = seq(0,pi,len=ncirc)
 points = data.frame(
@@ -112,7 +181,7 @@ segments(
     col=segments$tag
 )
 
-write.poly("split.poly",points, segments, limits=c(-0.1,0.1))
+write.poly("split.poly",points, segments, limits=c(-0.03,0.03))
 
 
 k = 0
@@ -129,7 +198,7 @@ n = nrow(points)
 segments = data.frame(
     i1 = 1:n,
     i2 = c(2:n,1),
-    tag = c(1,rep(3,npar+3),2,rep(3,2))
+    tag = c(2,rep(1,npar+3),3,rep(1,2))
 )
 
 a = -pi/4
@@ -142,4 +211,4 @@ segments(
     col=segments$tag
 )
 
-write.poly("turn.poly",points, segments)
+write.poly("turn.poly",points, segments,limits=c(-1,1)*0.3)
