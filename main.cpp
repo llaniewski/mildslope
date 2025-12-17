@@ -181,9 +181,11 @@ int main(int argc, char **argv) {
     double mesh_area_coef = 0.5;
     double mesh_area_limit = 0.0002;
     //mesh_area = mesh_area_limit;
+    system("mkdir -p meshes/ output/");
+    system("cp %s.poly meshes/", mesh_area);
     {
         char buf[1024];
-        sprintf(buf,"triangle/triangle -a%.6lf -q30 -j -p %s.poly", mesh_area, mesh_name.c_str());
+        sprintf(buf,"triangle/triangle -a%.6lf -q30 -j -p meshes/%s.poly", mesh_area, mesh_name.c_str());
         system(buf);
     }
 
@@ -194,7 +196,7 @@ int main(int argc, char **argv) {
 start:
     {
         char buf[1024];
-        sprintf(buf,"%s.%d", mesh_name.c_str(), mesh_idx);
+        sprintf(buf,"meshes/%s.%d", mesh_name.c_str(), mesh_idx);
         m.read_mesh(buf);
     }
 
