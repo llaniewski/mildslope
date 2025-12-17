@@ -182,7 +182,11 @@ int main(int argc, char **argv) {
     double mesh_area_limit = 0.0002;
     //mesh_area = mesh_area_limit;
     system("mkdir -p meshes/ output/");
-    system("cp %s.poly meshes/", mesh_area);
+    {
+        char buf[1024];
+        sprintf(buf,"cp %s.poly meshes/", mesh_name.c_str());
+        system(buf);
+    }
     {
         char buf[1024];
         sprintf(buf,"triangle/triangle -a%.6lf -q30 -j -p meshes/%s.poly", mesh_area, mesh_name.c_str());
@@ -211,13 +215,13 @@ start:
     {
         size_t npar=0;
         std::vector<Trip> coef;
-        for (size_t i=0;i<m.nP;i++) {
-            double x = m.P(0,i);
-            if ((3<x) && (x<7)) {
-                coef.push_back(Trip(i,npar,1));
-                npar++;
-            }
-        }
+        // for (size_t i=0;i<m.nP;i++) {
+        //     double x = m.P(0,i);
+        //     if ((3<x) && (x<7)) {
+        //         coef.push_back(Trip(i,npar,1));
+        //         npar++;
+        //     }
+        // }
         NPAR_DEPTH = npar;
         printf("depth parameters: %ld (coef.size: %ld)\n", NPAR_DEPTH, coef.size());
         par_depth.resize(m.nP,NPAR_DEPTH);
@@ -810,7 +814,7 @@ start:
     mesh_idx++;
     {
         char buf[1024];
-        sprintf(buf,"%s.%d", mesh_name.c_str(), mesh_idx);
+        sprintf(buf,"meshes/%s.%d", mesh_name.c_str(), mesh_idx);
         m.write_mesh(buf);
     }
     if (mesh_area < mesh_area_limit) return 0;
@@ -819,7 +823,7 @@ start:
     if (ftol_abs < 1e-8) ftol_abs = 1e-8;
     {
         char buf[1024];
-        sprintf(buf,"triangle/triangle -a%.6lf -q30 -j -p %s.%d", mesh_area, mesh_name.c_str(), mesh_idx);
+        sprintf(buf,"triangle/triangle -a%.6lf -q30 -j -p meshes/%s.%d", mesh_area, mesh_name.c_str(), mesh_idx);
         system(buf);
     }
     mesh_idx++;
