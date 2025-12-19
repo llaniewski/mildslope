@@ -48,26 +48,25 @@ for (d in seq(0.1,0.9,0.1)) {
 }
 
 
-npar = 60
-xpar = 2
-eps = 0.005
-ncirc = ceiling(eps*pi/0.03)+1
-for (d in seq(0.1,0.9,0.1)) {
-    r = d/2
-    
+
+make_wall = function(w,h) {
+    npar = 30
+    xpar = 2
     k = 0
     a = seq(0,pi,len=ncirc)
+    x = seq(-1,1,len=npar+2)
+    y = (cos(x*pi)+1)/2
     points = data.frame(
-        x=c(-5,-5,seq(-xpar,xpar,len=npar+2),5,5,eps,eps*cos(a),-eps),
-        y=c(0,rep(0.5,npar+4),0,0,r-max(eps*sin(a))+eps*sin(a),0),
-        par=c(rep(FALSE,3),rep(TRUE,npar),rep(FALSE,3+ncirc+2))
+        x=c(-5, -5,    xpar*x,  5, 5,w/2,w/2,-w/2,-w/2),
+        y=c( 0,0.5,0.5+h/4*y,0.5, 0,  0,h/2, h/2,   0),
+        par=c(rep(FALSE,3),rep(TRUE,npar),rep(FALSE,7))
     )
 
     n = nrow(points)
     segments = data.frame(
         i1 = 1:n,
         i2 = c(2:n,1),
-        tag = c(2,rep(1,npar+3),3,1,rep(1,ncirc-1+2),1)
+        tag = c(2,rep(1,npar+3),3,rep(1,5))
     )
 
     plot(points$x,points$y,asp=1)
@@ -77,8 +76,13 @@ for (d in seq(0.1,0.9,0.1)) {
         col=segments$tag
     )
 
-    write.poly(sprintf("wall_%02.0f.poly",d*100),points, segments)
+    write.poly(sprintf("wall_%03.0f_%03.0f.poly",w*100,h*100), points, segments)
 }
+
+for (h in seq(0.1, 1,0.1)) make_wall(0.01,h)
+for (h in seq(0.1, 1,0.1)) make_wall(0.6,h)
+for (h in seq(0.1, 1,0.1)) make_wall(1,h)
+for (w in seq(0.1, 1,0.1)) make_wall(w,0.6)
 
 npar = 100
 xpar = 2

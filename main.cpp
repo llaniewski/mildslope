@@ -180,7 +180,7 @@ int main(int argc, char **argv) {
     double mesh_area = 0.05;
     double mesh_area_coef = 0.5;
     double mesh_area_limit = 0.0002;
-    //mesh_area = mesh_area_limit;
+    mesh_area = mesh_area_limit;
     system("mkdir -p meshes/ output/");
     {
         char buf[1024];
@@ -193,7 +193,7 @@ int main(int argc, char **argv) {
         system(buf);
     }
 
-    double ftol_abs = 1e-8;
+    double ftol_abs = 1e-4;
     int mesh_idx = 1;
     int iter = 0;
 
@@ -317,7 +317,7 @@ start:
                 Eigen::Vector2d p2 = m.P.col(i2);
                 Eigen::Vector2d v = p1 - p0;
                 double len = v.norm();
-                double K_in_mat = 0.4;
+                double K_in_mat = 1.0;
                 for (int k=0; k<2; k++) {
                     coef.push_back(Trip(i0*2+k,i0*2+k,len/3 + K_in_mat/(2*len)));
                     coef.push_back(Trip(i0*2+k,i1*2+k,len/6 - K_in_mat/(2*len)));
@@ -817,8 +817,12 @@ start:
         sprintf(buf,"meshes/%s.%d", mesh_name.c_str(), mesh_idx);
         m.write_mesh(buf);
     }
-    if (mesh_area < mesh_area_limit) return 0;
+    int done = 2;
+    if (mesh_area < mesh_area_limit) done--;
+    if (ftol_abs < 1e-8) done--;
+    if (done == 0) return 0;
     mesh_area *= mesh_area_coef;
+    if (mesh_area < mesh_area_limit) mesh_area = mesh_area_limit;
     ftol_abs *= 0.1;
     if (ftol_abs < 1e-8) ftol_abs = 1e-8;
     {
