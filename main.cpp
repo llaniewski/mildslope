@@ -177,10 +177,10 @@ int main(int argc, char **argv) {
     std::string mesh_name = args[1];
 
     mesh m;
-    double mesh_area = 0.05;
+    double mesh_area = 0.1;
     double mesh_area_coef = 0.5;
     double mesh_area_limit = 0.0002;
-    mesh_area = mesh_area_limit;
+    //mesh_area = mesh_area_limit;
     system("mkdir -p meshes/ output/");
     {
         char buf[1024];
@@ -510,7 +510,7 @@ start:
                 std::vector<std::tuple<std::string, int, std::span<double> > >fields;
                 fields.push_back(std::make_tuple("res", 2, to_span(res_morph)));
                 char buf[1024];
-                sprintf(buf, "output/morph_%04d_%04d.vtu", iter, iter_morph);
+                sprintf(buf, "output/%s_%04d_%04d.vtu", mesh_name.c_str(), iter, iter_morph);
                 write_vtu(buf, to_span(P1), to_span(m.T), fields, {}, print);
             }
 
@@ -678,7 +678,7 @@ start:
             }
             if (export_all || (kidx == KINT-1)) {
                 char buf[1024];
-                sprintf(buf, "output/res_%lg_%04d.vtu", wave_k, iter);
+                sprintf(buf, "output/%s_%lg_%04d.vtu", mesh_name.c_str(), wave_k, iter);
                 write_vtu(buf, to_span(P1), to_span(m.T), {
                     std::make_tuple(std::string("Eta"), 2, to_span(x)),
                     std::make_tuple(std::string("Pb"), 2, to_span(Pb)),
@@ -721,7 +721,7 @@ start:
         for (size_t j=0;j<objs.cols();j++) total_obj += objs(1,j);
         {
             char buf[1024];
-            sprintf(buf, "output/res_%04d.csv", iter);
+            sprintf(buf, "output/%s_%04d.csv", mesh_name.c_str(), iter);
             FILE* f = fopen(buf, "w");
             fprintf(f, "idx,wave_k,objw");
             for (size_t i=0;i<NOBJ;i++) {
@@ -780,12 +780,19 @@ start:
         pre_type& pre;
     } obj_data{objective, precond};
 
-    nlopt_opt opt = nlopt_create(NLOPT_LD_LBFGS, NPAR);
     nlopt_result opt_res;
-    opt_res = nlopt_set_precond_min_objective(
+    // nlopt_opt opt = nlopt_create(NLOPT_LD_LBFGS, NPAR);
+    // opt_res = nlopt_set_precond_min_objective(
+    //     opt,
+    //     [](unsigned n, const double* x, double* grad, void* f_data) -> double { return static_cast<obj_data_t*>(f_data)->obj(x, grad); },
+    //     [](unsigned n, const double *x, const double *v, double *vpre, void *f_data) { return static_cast<obj_data_t*>(f_data)->pre(v, vpre); },
+    //     (void*) &obj_data
+    // );
+
+    nlopt_opt opt = nlopt_create(NLOPT_LD_MMA, NPAR);
+    opt_res = nlopt_set_min_objective(
         opt,
         [](unsigned n, const double* x, double* grad, void* f_data) -> double { return static_cast<obj_data_t*>(f_data)->obj(x, grad); },
-        [](unsigned n, const double *x, const double *v, double *vpre, void *f_data) { return static_cast<obj_data_t*>(f_data)->pre(v, vpre); },
         (void*) &obj_data
     );
 
@@ -818,8 +825,8 @@ start:
         m.write_mesh(buf);
     }
     int done = 2;
-    if (mesh_area < mesh_area_limit) done--;
-    if (ftol_abs < 1e-8) done--;
+    if (mesh_area <= mesh_area_limit) done--;
+    if (ftol_abs <= 1e-8) done--;
     if (done == 0) return 0;
     mesh_area *= mesh_area_coef;
     if (mesh_area < mesh_area_limit) mesh_area = mesh_area_limit;
