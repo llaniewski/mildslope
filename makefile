@@ -1,10 +1,12 @@
-CXXFLAGS+=-I/usr/include/eigen3/ -I/usr/include/suitesparse/ -std=c++20
+SENV=/home/llaniewski/spack/var/spack/environments/test/.spack-env/view/
+CXXFLAGS+=-I$(SENV)/include -I$(SENV)/include/eigen3 -I$(SENV)/include/suitesparse/ -std=c++20
 CXXFLAGS+=-O3 -fopenmp
 CFLAGS+=-O3 -fopenmp
 CXXFLAGS+=-Wno-unused-result -Wno-write-strings
 NLOPT=$(HOME)/repo/nlopt/build
 LDFLAGS+=-Wl,-rpath $(NLOPT)
 LDFLAGS+=-L$(NLOPT)
+LDFLAGS+=-L$(SENV)/lib
 LDFLAGS+=-lklu -lnlopt
 # CXXFLAGS+=-g
 # CFLAGS+=-g
