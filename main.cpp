@@ -412,27 +412,27 @@ start:
         }
     }
 
-    {
-        std::vector<std::tuple<std::string, int, std::span<double> > >fields;
-        Eigen::Matrix<double, 3, Eigen::Dynamic> v1(3,m.nP); v1.setZero();
-        Eigen::Matrix<double, Eigen::Dynamic, 1> fix0(m.nP); fix0.setZero();
-        Eigen::Matrix<double, Eigen::Dynamic, 1> fix1(m.nP); fix1.setZero();
-        for (size_t i=0;i<nBP;i++)  {
-            size_t j = border_indexes[i];
-            v1(0,j) = border_directions(0,i);
-            v1(1,j) = border_directions(1,i);
-            fix0(j) = border_fix(0,i);
-            fix1(j) = border_fix(1,i);
-        }
-        fields.push_back(std::make_tuple(
-            "v1",
-            3,
-            std::span(v1.data(),v1.size())
-        ));
-        fields.push_back(std::make_tuple("fix0", 1, to_span(fix0)));
-        fields.push_back(std::make_tuple("fix1", 1, to_span(fix1)));
-        write_vtu("output/bord.vtu", to_span(m.P), to_span(m.T), fields);
-    }
+//    {
+//        std::vector<std::tuple<std::string, int, std::span<double> > >fields;
+//        Eigen::Matrix<double, 3, Eigen::Dynamic> v1(3,m.nP); v1.setZero();
+//        Eigen::Matrix<double, Eigen::Dynamic, 1> fix0(m.nP); fix0.setZero();
+//        Eigen::Matrix<double, Eigen::Dynamic, 1> fix1(m.nP); fix1.setZero();
+//        for (size_t i=0;i<nBP;i++)  {
+//            size_t j = border_indexes[i];
+//            v1(0,j) = border_directions(0,i);
+//            v1(1,j) = border_directions(1,i);
+//            fix0(j) = border_fix(0,i);
+//            fix1(j) = border_fix(1,i);
+//        }
+//        fields.push_back(std::make_tuple(
+//            "v1",
+//            3,
+//            std::span(v1.data(),v1.size())
+//        ));
+//        fields.push_back(std::make_tuple("fix0", 1, to_span(fix0)));
+//        fields.push_back(std::make_tuple("fix1", 1, to_span(fix1)));
+//        write_vtu("output/bord.vtu", to_span(m.P), to_span(m.T), fields);
+//    }
 
     
     SpMat par_shape_mass = par_shape.transpose() * border_mat.transpose() * edge_mass_mat * border_mat * par_shape;
