@@ -14,6 +14,124 @@
 #include <thread>
 #include <vector>
 
+#include <stdio.h>
+#include <nlopt.h>
+
+void print_nlopt_info(nlopt_opt opt)
+{
+    unsigned n = nlopt_get_dimension(opt);
+    nlopt_algorithm algo = nlopt_get_algorithm(opt);
+
+    printf("\n========== NLopt Information ==========\n");
+
+    // Algorithm information
+    printf("Algorithm: %s\n", nlopt_algorithm_name(algo));
+    printf("Dimension: %u\n", n);
+
+    // Stopping criteria
+    printf("\nStopping criteria:\n");
+    printf("Max evaluations: %d\n", nlopt_get_maxeval(opt));
+    printf("Max time: %g\n", nlopt_get_maxtime(opt));
+    printf("Stop value: %g\n", nlopt_get_stopval(opt));
+    printf("Function tolerance (rel): %g\n", nlopt_get_ftol_rel(opt));
+    printf("Function tolerance (abs): %g\n", nlopt_get_ftol_abs(opt));
+    printf("Parameter tolerance (rel): %g\n", nlopt_get_xtol_rel(opt));
+
+    // Optimization statistics
+    printf("\nOptimization statistics:\n");
+    printf("Number of evaluations: %d\n", nlopt_get_numevals(opt));
+
+    // Algorithm-specific parameters
+    printf("\nAlgorithm-specific parameters:\n");
+
+    unsigned nparams = nlopt_num_params(opt);
+
+    for (unsigned i = 0; i < nparams; i++)
+    {
+        const char *name = nlopt_nth_param(opt, i);
+
+        printf("%s = %g\n",
+               name,
+               nlopt_get_param(opt, name, 0.0));
+    }
+
+    printf("=======================================\n");
+}
+
+void print_nlopt_result(nlopt_result result)
+{
+    printf("\n========== NLopt Optimization Result ==========\n");
+
+    printf("Result code: %d\n", result);
+
+    printf("Result name: %s\n",
+           nlopt_result_to_string(result));
+
+    printf("Status: ");
+
+    if (result > 0)
+    {
+        printf("SUCCESS\n");
+    }
+    else
+    {
+        printf("FAILURE / TERMINATION WITH ERROR\n");
+    }
+
+    switch (result)
+    {
+        case NLOPT_SUCCESS:
+            printf("Description: Generic successful termination.\n");
+            break;
+
+        case NLOPT_STOPVAL_REACHED:
+            printf("Description: Stop value reached.\n");
+            break;
+
+        case NLOPT_FTOL_REACHED:
+            printf("Description: Function tolerance reached.\n");
+            break;
+
+        case NLOPT_XTOL_REACHED:
+            printf("Description: Parameter tolerance reached.\n");
+            break;
+
+        case NLOPT_MAXEVAL_REACHED:
+            printf("Description: Maximum number of evaluations reached.\n");
+            break;
+
+        case NLOPT_MAXTIME_REACHED:
+            printf("Description: Maximum optimization time reached.\n");
+            break;
+
+        case NLOPT_FAILURE:
+            printf("Description: Generic failure.\n");
+            break;
+
+        case NLOPT_INVALID_ARGS:
+            printf("Description: Invalid arguments.\n");
+            break;
+
+        case NLOPT_OUT_OF_MEMORY:
+            printf("Description: Out of memory.\n");
+            break;
+
+        case NLOPT_ROUNDOFF_LIMITED:
+            printf("Description: Roundoff errors limited progress.\n");
+            break;
+
+        case NLOPT_FORCED_STOP:
+            printf("Description: Optimization was forcibly stopped.\n");
+            break;
+
+        default:
+            printf("Description: Unknown result code.\n");
+            break;
+    }
+
+    printf("================================================\n");
+}
+
 const double pi = 4.0 * atan(1.0);
 
 size_t* triangles;
@@ -217,7 +335,7 @@ int main(int argc, char** argv) {
     double mesh_area = 0.1;
     double mesh_area_coef = 0.5;
     double mesh_area_limit = 0.0002;
-    // mesh_area = mesh_area_limit;
+    mesh_area = mesh_area_limit;
     system("mkdir -p meshes/ output/");
     {
         char buf[1024];
@@ -804,7 +922,7 @@ start: {
         {
             std::atomic<size_t> akidx = 0;
             std::vector<std::jthread> thr;
-            for (int i = 0; i < 8; i++) {
+            for (int i = 0; i < 36; i++) {
                 thr.push_back(std::jthread([&]() {
                     for (size_t kidx = (akidx++); kidx < KINT; kidx = (akidx++))
                         solve_problem(kidx);
@@ -909,7 +1027,7 @@ start: {
     nlopt_opt opt = nlopt_create(NLOPT_LD_LBFGS, NPAR);
     opt_res = nlopt_set_precond_min_objective(
         opt,
-        [](unsigned n, const double* x, double* grad, void* f_data) -> double { return static_cast<obj_data_t*>(f_data)->obj(x, grad); },
+        [](unsigned n, const double* x, double* grad, void* f_data) -> double { printf("Called objective ---------\n");return static_cast<obj_data_t*>(f_data)->obj(x, grad); },
         [](unsigned n, const double* x, const double* v, double* vpre, void* f_data) {
             return static_cast<obj_data_t*>(f_data)->pre(v, vpre);
         },
@@ -944,8 +1062,15 @@ start: {
     Eigen::VectorXd pr(NPAR);
     pr.setZero();
     double obj = 0;
+    printf("Calling nlopt (%d)...\n", (int) pr.size());
     opt_res = nlopt_optimize(opt, pr.data(), &obj);
+    
+    print_nlopt_result(opt_res);
+    print_nlopt_info(opt);
+
+    printf("nlopt done ...\n");
     printf("Obj: %lg -- finished nlopt\n", obj);
+    // return 0;
     objective(pr.data(), NULL, true);
     m.P = P1;
     mesh_idx++;

@@ -2,9 +2,13 @@
 /main
 *.ele
 *.node
+*.poly
+*.out
 *_d.c
 *_b.c
 *_g.c
 *~
 *.msg
 *.csv
+output/
+meshes/
