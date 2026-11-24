@@ -14,11 +14,10 @@
 #include <thread>
 #include <vector>
 
-#include <stdio.h>
 #include <nlopt.h>
+#include <stdio.h>
 
-void print_nlopt_info(nlopt_opt opt)
-{
+void print_nlopt_info(nlopt_opt opt) {
     unsigned n = nlopt_get_dimension(opt);
     nlopt_algorithm algo = nlopt_get_algorithm(opt);
 
@@ -46,87 +45,78 @@ void print_nlopt_info(nlopt_opt opt)
 
     unsigned nparams = nlopt_num_params(opt);
 
-    for (unsigned i = 0; i < nparams; i++)
-    {
-        const char *name = nlopt_nth_param(opt, i);
+    for (unsigned i = 0; i < nparams; i++) {
+        const char* name = nlopt_nth_param(opt, i);
 
-        printf("%s = %g\n",
-               name,
-               nlopt_get_param(opt, name, 0.0));
+        printf("%s = %g\n", name, nlopt_get_param(opt, name, 0.0));
     }
 
     printf("=======================================\n");
 }
 
-void print_nlopt_result(nlopt_result result)
-{
+void print_nlopt_result(nlopt_result result) {
     printf("\n========== NLopt Optimization Result ==========\n");
 
     printf("Result code: %d\n", result);
 
-    printf("Result name: %s\n",
-           nlopt_result_to_string(result));
+    printf("Result name: %s\n", nlopt_result_to_string(result));
 
     printf("Status: ");
 
-    if (result > 0)
-    {
+    if (result > 0) {
         printf("SUCCESS\n");
-    }
-    else
-    {
+    } else {
         printf("FAILURE / TERMINATION WITH ERROR\n");
     }
 
-    switch (result)
-    {
-        case NLOPT_SUCCESS:
-            printf("Description: Generic successful termination.\n");
-            break;
+    switch (result) {
+    case NLOPT_SUCCESS:
+        printf("Description: Generic successful termination.\n");
+        break;
 
-        case NLOPT_STOPVAL_REACHED:
-            printf("Description: Stop value reached.\n");
-            break;
+    case NLOPT_STOPVAL_REACHED:
+        printf("Description: Stop value reached.\n");
+        break;
 
-        case NLOPT_FTOL_REACHED:
-            printf("Description: Function tolerance reached.\n");
-            break;
+    case NLOPT_FTOL_REACHED:
+        printf("Description: Function tolerance reached.\n");
+        break;
 
-        case NLOPT_XTOL_REACHED:
-            printf("Description: Parameter tolerance reached.\n");
-            break;
+    case NLOPT_XTOL_REACHED:
+        printf("Description: Parameter tolerance reached.\n");
+        break;
 
-        case NLOPT_MAXEVAL_REACHED:
-            printf("Description: Maximum number of evaluations reached.\n");
-            break;
+    case NLOPT_MAXEVAL_REACHED:
+        printf("Description: Maximum number of evaluations reached.\n");
+        break;
 
-        case NLOPT_MAXTIME_REACHED:
-            printf("Description: Maximum optimization time reached.\n");
-            break;
+    case NLOPT_MAXTIME_REACHED:
+        printf("Description: Maximum optimization time reached.\n");
+        break;
 
-        case NLOPT_FAILURE:
-            printf("Description: Generic failure.\n");
-            break;
+    case NLOPT_FAILURE:
+        printf("Description: Generic failure.\n");
+        break;
 
-        case NLOPT_INVALID_ARGS:
-            printf("Description: Invalid arguments.\n");
-            break;
+    case NLOPT_INVALID_ARGS:
+        printf("Description: Invalid arguments.\n");
+        break;
 
-        case NLOPT_OUT_OF_MEMORY:
-            printf("Description: Out of memory.\n");
-            break;
+    case NLOPT_OUT_OF_MEMORY:
+        printf("Description: Out of memory.\n");
+        break;
 
-        case NLOPT_ROUNDOFF_LIMITED:
-            printf("Description: Roundoff errors limited progress.\n");
-            break;
+    case NLOPT_ROUNDOFF_LIMITED:
+        printf("Description: Roundoff errors limited progress.\n");
+        break;
 
-        case NLOPT_FORCED_STOP:
-            printf("Description: Optimization was forcibly stopped.\n");
-            break;
+    case NLOPT_FORCED_STOP:
+        printf("Description: Optimization was forcibly stopped.\n");
+        break;
 
-        default:
-            printf("Description: Unknown result code.\n");
-            break;
+    default:
+        printf("Description: Unknown result code.\n");
+        break;
     }
 
     printf("================================================\n");
@@ -318,6 +308,60 @@ public:
         fclose(f);
         return 0;
     }
+    int write_mesh_bord(const std::string& mesh_name) {
+        FILE* f;
+        std::vector<bool> mark(nP);
+        for (size_t i = 0; i < nP; i++)
+            mark[i] = false;
+        const int edge_size = 2;
+        for (size_t i = 0; i < nB; i++) {
+            for (int j = 0; j < edge_size; j++) {
+                mark[B(j, i)] = true;
+            }
+        }
+        std::vector<long int> map(nP);
+        long int map_idx = 0;
+        for (size_t i = 0; i < nP; i++) {
+            if (mark[i]) {
+                map[i] = map_idx;
+                map_idx++;
+            } else {
+                map[i] = -1;
+            }
+        }
+        f = fopen_safe(mesh_name + ".poly", "w");
+        int bord = 1, dim = 2, el_size = 3;
+        fprintf(f, "%ld %d %ld %d\n", 0 /*n points*/, dim, nAttr, bord);
+        fprintf(f, "%ld %d\n", nB, 1 /*bord*/);
+        for (size_t i = 0; i < nB; i++) {
+            fprintf(f, "%ld", (long int)i + 1);
+            for (int j = 0; j < edge_size; j++) {
+                assert(mark[B(j, i)]);
+                assert(map[B(j, i)] != -1);
+                fprintf(f, " %ld", map[B(j, i)] + 1);
+            }
+            for (int j = 0; j < bord; j++)
+                fprintf(f, " %d", B_flag(i, j));
+            fprintf(f, "\n");
+        }
+        fprintf(f, "0\n");
+        fprintf(f, "# Generated by mildslope\n");
+        fclose(f);
+        f = fopen_safe(mesh_name + ".node", "w");
+        fprintf(f, "%ld %d %ld %d\n", map_idx, dim, nAttr, 0 /*bord*/);
+        for (size_t i = 0; i < nP; i++) {
+            if (mark[i]) {
+                fprintf(f, "%ld", map[i] + 1);
+                for (int j = 0; j < dim; j++)
+                    fprintf(f, " %lf", P(j, i));
+                for (size_t j = 0; j < nAttr; j++)
+                    fprintf(f, " %lf", Attr(i, j));
+                fprintf(f, "\n");
+            }
+        }
+        fclose(f);
+        return 0;
+    }
 };
 
 int main(int argc, char** argv) {
@@ -331,9 +375,12 @@ int main(int argc, char** argv) {
     }
     std::string mesh_name = args[1];
 
+    unsigned int nthreads = std::thread::hardware_concurrency();
+    printf("Number of threads: %d\n", (int)nthreads);
+
     mesh m;
     double mesh_area = 0.1;
-    double mesh_area_coef = 0.5;
+    double mesh_area_coef = 0.7;
     double mesh_area_limit = 0.0002;
     mesh_area = mesh_area_limit;
     system("mkdir -p meshes/ output/");
@@ -349,6 +396,8 @@ int main(int argc, char** argv) {
     }
 
     double ftol_abs = 1e-4;
+    double ftol_abs_limit = 1e-10;
+    double ftol_abs_coef = 0.1;
     int mesh_idx = 1;
     int iter = 0;
 
@@ -922,7 +971,7 @@ start: {
         {
             std::atomic<size_t> akidx = 0;
             std::vector<std::jthread> thr;
-            for (int i = 0; i < 36; i++) {
+            for (int i = 0; i < nthreads; i++) {
                 thr.push_back(std::jthread([&]() {
                     for (size_t kidx = (akidx++); kidx < KINT; kidx = (akidx++))
                         solve_problem(kidx);
@@ -1027,7 +1076,7 @@ start: {
     nlopt_opt opt = nlopt_create(NLOPT_LD_LBFGS, NPAR);
     opt_res = nlopt_set_precond_min_objective(
         opt,
-        [](unsigned n, const double* x, double* grad, void* f_data) -> double { printf("Called objective ---------\n");return static_cast<obj_data_t*>(f_data)->obj(x, grad); },
+        [](unsigned n, const double* x, double* grad, void* f_data) -> double { return static_cast<obj_data_t*>(f_data)->obj(x, grad); },
         [](unsigned n, const double* x, const double* v, double* vpre, void* f_data) {
             return static_cast<obj_data_t*>(f_data)->pre(v, vpre);
         },
@@ -1062,36 +1111,33 @@ start: {
     Eigen::VectorXd pr(NPAR);
     pr.setZero();
     double obj = 0;
-    printf("Calling nlopt (%d)...\n", (int) pr.size());
     opt_res = nlopt_optimize(opt, pr.data(), &obj);
-    
+
     print_nlopt_result(opt_res);
     print_nlopt_info(opt);
 
-    printf("nlopt done ...\n");
     printf("Obj: %lg -- finished nlopt\n", obj);
-    // return 0;
     objective(pr.data(), NULL, true);
     m.P = P1;
     mesh_idx++;
     {
         char buf[1024];
         sprintf(buf, "meshes/%s.%d", mesh_name.c_str(), mesh_idx);
-        m.write_mesh(buf);
+        m.write_mesh_bord(buf);
     }
     int done = 2;
     if (mesh_area <= mesh_area_limit)
         done--;
-    if (ftol_abs <= 1e-8)
+    if (ftol_abs <= ftol_abs_limit)
         done--;
     if (done == 0)
         return 0;
     mesh_area *= mesh_area_coef;
     if (mesh_area < mesh_area_limit)
         mesh_area = mesh_area_limit;
-    ftol_abs *= 0.1;
-    if (ftol_abs < 1e-8)
-        ftol_abs = 1e-8;
+    ftol_abs *= ftol_abs_coef;
+    if (ftol_abs < ftol_abs_limit)
+        ftol_abs = ftol_abs_limit;
     {
         char buf[1024];
         sprintf(buf, "triangle/triangle -a%.6lf -q30 -j -p meshes/%s.%d", mesh_area, mesh_name.c_str(), mesh_idx);
