@@ -84,6 +84,40 @@ for (h in seq(0.1, 1,0.1)) make_wall(0.6,h)
 for (h in seq(0.1, 1,0.1)) make_wall(1,h)
 for (w in seq(0.1, 1,0.1)) make_wall(w,0.6)
 
+
+make_chan = function(h) {
+    npar = 30
+    xpar = 2
+    k = 0
+    a = seq(0,pi,len=ncirc)
+    x = seq(-1,1,len=npar+2)
+    y = ifelse(x<0,(cos(x*pi)+1)/2,1)
+    points = data.frame(
+        x=c(-5, -5,    xpar*x,  5, 5,0,0),
+        y=c( 0,0.5,0.5+h/2*y,0.5+h/2, h/2, h/2,   0),
+        par=c(rep(FALSE,3),rep(TRUE,npar),rep(FALSE,5))
+    )
+
+    n = nrow(points)
+    segments = data.frame(
+        i1 = 1:n,
+        i2 = c(2:n,1),
+        tag = c(2,rep(1,npar+3),3,rep(1,3))
+    )
+
+    plot(points$x,points$y,asp=1)
+    segments(
+        points$x[segments$i1],points$y[segments$i1],
+        points$x[segments$i2],points$y[segments$i2],
+        col=segments$tag
+    )
+
+    write.poly(sprintf("step_%03.0f.poly",h*100), points, segments)
+}
+
+for (h in seq(0.1, 3,0.1)) make_chan(h)
+
+
 npar = 100
 xpar = 2
 eps = 0.005
